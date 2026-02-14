@@ -13,7 +13,7 @@ import TwinCard from "@/components/twins/twin-card";
 import { searchRecipesByTitle, getRecipeById, getRecipes } from "@/lib/api/recipedb";
 import { addToHistory } from "@/lib/api/cache";
 import {
-  generateFlavorPrint,
+  generateFlavorPrintAsync,
   calculateTwinScore,
 } from "@/lib/algorithms/flavorprint";
 import type { TwinResult, RecipeDetail, Recipe } from "@/types";
@@ -68,7 +68,7 @@ function TwinsContent() {
         img_url: source.recipe.img_url,
       });
 
-      const sourceFP = generateFlavorPrint(
+      const sourceFP = await generateFlavorPrintAsync(
         source.recipe.recipe_id,
         source.recipe.recipe_title,
         source.recipe.sub_region,
@@ -144,7 +144,7 @@ function TwinsContent() {
 
           if (!twinDetail.recipe || !twinDetail.ingredients?.length) continue;
 
-          const twinFP = generateFlavorPrint(
+          const twinFP = await generateFlavorPrintAsync(
             twinDetail.recipe.recipe_id,
             twinDetail.recipe.recipe_title,
             twinDetail.recipe.sub_region,

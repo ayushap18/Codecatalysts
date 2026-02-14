@@ -1,4 +1,5 @@
 import type { FlavorCategory, FlavorPrint, FlavorMolecule, RecipeIngredient, PhilosophyScore, TwinResult, RecipeDetail } from "@/types";
+import { getEntitiesByName } from "@/lib/api/flavordb";
 
 // Flavor categories with assigned colors
 const FLAVOR_CATEGORIES: Record<string, string> = {
@@ -24,7 +25,7 @@ const FLAVOR_CATEGORIES: Record<string, string> = {
 };
 
 // Map a flavor profile string to its category
-function classifyFlavor(profile: string): string {
+export function classifyFlavor(profile: string): string {
   const lower = profile.toLowerCase();
   for (const [cat] of Object.entries(FLAVOR_CATEGORIES)) {
     if (lower.includes(cat)) return cat;
@@ -182,7 +183,7 @@ const INGREDIENT_MOLECULES: Record<string, FlavorMolecule[]> = {
   ],
 };
 
-// Get molecules for an ingredient by matching against our cache
+// Get molecules for an ingredient by matching against our static cache (sync)
 export function getMoleculesForIngredient(ingredientName: string): FlavorMolecule[] {
   const lower = ingredientName.toLowerCase().trim();
   // Direct match
@@ -194,7 +195,48 @@ export function getMoleculesForIngredient(ingredientName: string): FlavorMolecul
   return [];
 }
 
-// Generate FlavorPrint for a recipe
+// Runtime cache for FlavorDB lookups (avoids repeated API calls within session)
+const _runtimeMoleculeCache: Record<string, FlavorMolecule[]> = {};
+
+/** Async molecule lookup: tries static cache first, then FlavorDB API */
+export async function getMoleculesForIngredientAsync(ingredientName: string): Promise<FlavorMolecule[]> {
+  const lower = ingredientName.toLowerCase().trim();
+  // 1. Static cache (instant, 0 API calls)
+  const staticResult = getMoleculesForIngredient(lower);
+  if (staticResult.length > 0) return staticResult;
+  // Skip known empty ingredients
+  if (INGREDIENT_MOLECULES[lower]?.length === 0) return [];
+
+  // 2. Runtime cache
+  if (_runtimeMoleculeCache[lower]) return _runtimeMoleculeCache[lower];
+
+  // 3. FlavorDB API (cached in localStorage for 24h)
+  try {
+    const result = await getEntitiesByName(lower);
+    const entities = result?.content || [];
+    if (entities.length === 0) {
+      _runtimeMoleculeCache[lower] = [];
+      return [];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entity = entities[0] as any;
+    const molecules: FlavorMolecule[] = (entity.molecules || []).map(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (m: any) => ({
+        common_name: m.common_name || m.commonName || m.common_Name || "Unknown",
+        flavor_profile: m.flavor_profile || m.flavorProfile || m.flavor_Profile || "other",
+        pubchem_id: m.pubchem_id || m.pubchemId,
+      })
+    );
+    _runtimeMoleculeCache[lower] = molecules;
+    return molecules;
+  } catch {
+    _runtimeMoleculeCache[lower] = [];
+    return [];
+  }
+}
+
+// Generate FlavorPrint for a recipe (sync — uses static cache only)
 export function generateFlavorPrint(
   recipeId: number,
   recipeTitle: string,
@@ -211,6 +253,43 @@ export function generateFlavorPrint(
     allMolecules.push(...mols);
   }
 
+  return buildFlavorPrint(recipeId, recipeTitle, cuisine, country, ingredients.length, analyzedCount, allMolecules);
+}
+
+/** Async FlavorPrint generation — uses FlavorDB API fallback for unknown ingredients */
+export async function generateFlavorPrintAsync(
+  recipeId: number,
+  recipeTitle: string,
+  cuisine: string,
+  country: string,
+  ingredients: RecipeIngredient[]
+): Promise<FlavorPrint> {
+  const allMolecules: FlavorMolecule[] = [];
+  let analyzedCount = 0;
+
+  // Fetch molecules for all ingredients in parallel
+  const results = await Promise.all(
+    ingredients.map((ing) => getMoleculesForIngredientAsync(ing.ingredient))
+  );
+
+  for (const mols of results) {
+    if (mols.length > 0) analyzedCount++;
+    allMolecules.push(...mols);
+  }
+
+  return buildFlavorPrint(recipeId, recipeTitle, cuisine, country, ingredients.length, analyzedCount, allMolecules);
+}
+
+// Shared FlavorPrint builder
+function buildFlavorPrint(
+  recipeId: number,
+  recipeTitle: string,
+  cuisine: string,
+  country: string,
+  ingredientCount: number,
+  analyzedCount: number,
+  allMolecules: FlavorMolecule[]
+): FlavorPrint {
   // Group by flavor category
   const categoryMap: Record<string, string[]> = {};
   for (const mol of allMolecules) {
@@ -245,7 +324,7 @@ export function generateFlavorPrint(
     country,
     categories,
     totalMolecules: uniqueMols.length,
-    ingredientCount: ingredients.length,
+    ingredientCount,
     analyzedCount,
     molecules: uniqueMols,
   };
@@ -296,7 +375,7 @@ export function calculateTwinScore(
   };
 }
 
-// Calculate philosophy spectrum score
+// Calculate philosophy spectrum score (sync)
 export function calculatePhilosophyScore(
   ingredients: RecipeIngredient[]
 ): PhilosophyScore {
@@ -307,6 +386,31 @@ export function calculatePhilosophyScore(
     ingMolecules[ing.ingredient] = mols.map((m) => m.common_name);
   }
 
+  return computePhilosophy(ingMolecules);
+}
+
+/** Async philosophy score — uses FlavorDB fallback */
+export async function calculatePhilosophyScoreAsync(
+  ingredients: RecipeIngredient[]
+): Promise<PhilosophyScore> {
+  const ingMolecules: Record<string, string[]> = {};
+
+  const results = await Promise.all(
+    ingredients.map(async (ing) => {
+      const mols = await getMoleculesForIngredientAsync(ing.ingredient);
+      return { name: ing.ingredient, mols };
+    })
+  );
+
+  for (const { name, mols } of results) {
+    ingMolecules[name] = mols.map((m) => m.common_name);
+  }
+
+  return computePhilosophy(ingMolecules);
+}
+
+// Shared philosophy computation
+function computePhilosophy(ingMolecules: Record<string, string[]>): PhilosophyScore {
   const ingNames = Object.keys(ingMolecules).filter(
     (name) => ingMolecules[name].length > 0
   );
@@ -329,7 +433,6 @@ export function calculatePhilosophyScore(
   }
 
   const avgShared = totalPairs > 0 ? totalShared / totalPairs : 0;
-  // Baseline: ~0.5 shared molecules is the midpoint
   const baseline = 0.5;
   const normalized = Math.min(100, Math.max(0, (avgShared / (baseline * 2)) * 100));
 

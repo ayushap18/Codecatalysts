@@ -18,7 +18,9 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import {
   getMoleculesForIngredient,
+  getMoleculesForIngredientAsync,
   FLAVOR_CATEGORIES,
+  classifyFlavor,
 } from "@/lib/algorithms/flavorprint";
 import { addToHistory } from "@/lib/api/cache";
 
@@ -47,29 +49,7 @@ const POPULAR_INGREDIENTS = [
   "rice",
 ];
 
-function classifyFlavor(profile: string): string {
-  const lower = profile.toLowerCase();
-  for (const cat of Object.keys(FLAVOR_CATEGORIES)) {
-    if (lower.includes(cat)) return cat;
-  }
-  if (lower.includes("roast") || lower.includes("toast")) return "warm";
-  if (lower.includes("green") || lower.includes("grass")) return "herbal";
-  if (lower.includes("butter") || lower.includes("cream") || lower.includes("fat")) return "creamy";
-  if (lower.includes("pepper") || lower.includes("pungent")) return "spicy";
-  if (lower.includes("lemon") || lower.includes("orange") || lower.includes("lime")) return "citrus";
-  if (lower.includes("meat") || lower.includes("broth")) return "meaty";
-  if (lower.includes("mushroom") || lower.includes("soil")) return "earthy";
-  if (lower.includes("camphor") || lower.includes("menthol")) return "cooling";
-  if (lower.includes("smoke") || lower.includes("char")) return "smoky";
-  if (lower.includes("rose") || lower.includes("violet") || lower.includes("jasmine")) return "floral";
-  if (lower.includes("apple") || lower.includes("berry") || lower.includes("banana")) return "fruity";
-  if (lower.includes("nut") || lower.includes("almond") || lower.includes("hazel")) return "nutty";
-  if (lower.includes("wood") || lower.includes("cedar") || lower.includes("oak")) return "woody";
-  return "other";
-}
-
-function analyzeIngredient(name: string): IngredientAnalysis | null {
-  const molecules = getMoleculesForIngredient(name);
+function analyzeIngredient(name: string, molecules: { common_name: string; flavor_profile: string }[]): IngredientAnalysis | null {
   if (molecules.length === 0) return null;
 
   const catMap: Record<string, { count: number; color: string }> = {};
@@ -85,7 +65,7 @@ function analyzeIngredient(name: string): IngredientAnalysis | null {
   }
 
   const categories = Object.entries(catMap)
-    .map(([name, v]) => ({ name, ...v }))
+    .map(([catName, v]) => ({ name: catName, ...v }))
     .sort((a, b) => b.count - a.count);
 
   return { name, molecules, categories };
@@ -95,19 +75,22 @@ export default function ExplorePage() {
   const [query, setQuery] = useState("");
   const [analyses, setAnalyses] = useState<IngredientAnalysis[]>([]);
   const [notFound, setNotFound] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
 
-  function handleSearch(ingredient: string) {
+  async function handleSearch(ingredient: string) {
     const name = ingredient.trim().toLowerCase();
     if (!name) return;
 
     // Avoid duplicates
     if (analyses.some((a) => a.name === name)) return;
 
-    const result = analyzeIngredient(name);
+    setSearching(true);
+    // Try async (FlavorDB fallback) first
+    const molecules = await getMoleculesForIngredientAsync(name);
+    const result = analyzeIngredient(name, molecules);
     if (result) {
       setAnalyses((prev) => [result, ...prev]);
       setNotFound(null);
-      // Track in history
       addToHistory({
         type: "explore",
         title: `Explore: ${name}`,
@@ -117,6 +100,7 @@ export default function ExplorePage() {
     } else {
       setNotFound(name);
     }
+    setSearching(false);
     setQuery("");
   }
 

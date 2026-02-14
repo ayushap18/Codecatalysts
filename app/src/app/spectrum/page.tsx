@@ -14,7 +14,7 @@ import SpectrumGauge from "@/components/spectrum/spectrum-gauge";
 import RadialChart from "@/components/flavorprint/radial-chart";
 import { searchRecipesByTitle, getRecipeById } from "@/lib/api/recipedb";
 import { addToHistory } from "@/lib/api/cache";
-import { generateFlavorPrint, calculatePhilosophyScore } from "@/lib/algorithms/flavorprint";
+import { generateFlavorPrintAsync, calculatePhilosophyScoreAsync } from "@/lib/algorithms/flavorprint";
 import type { RecipeDetail, FlavorPrint, PhilosophyScore } from "@/types";
 
 export default function SpectrumPage() {
@@ -43,14 +43,14 @@ function SpectrumContent() {
         setLoading(false);
         return;
       }
-      const fp = generateFlavorPrint(
+      const fp = await generateFlavorPrintAsync(
         data.recipe.recipe_id,
         data.recipe.recipe_title,
         data.recipe.sub_region,
         data.recipe.continent,
         data.ingredients
       );
-      const ps = calculatePhilosophyScore(data.ingredients);
+      const ps = await calculatePhilosophyScoreAsync(data.ingredients);
       // Track in history
       addToHistory({
         type: "spectrum",

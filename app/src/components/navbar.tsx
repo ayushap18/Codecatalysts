@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Flame, GitCompareArrows, BarChart3, Home, Moon, Sun, Beaker, Menu, X } from "lucide-react";
+import { Flame, GitCompareArrows, BarChart3, Home, Moon, Sun, Beaker, Menu, X, ChefHat, Dna } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { href: "/twins", label: "Flavor Twins", icon: GitCompareArrows },
   { href: "/spectrum", label: "Spectrum", icon: BarChart3 },
   { href: "/explore", label: "Explore", icon: Beaker },
+  { href: "/builder", label: "Builder", icon: ChefHat },
+  { href: "/cuisine", label: "Cuisine DNA", icon: Dna },
 ];
 
 export default function Navbar() {

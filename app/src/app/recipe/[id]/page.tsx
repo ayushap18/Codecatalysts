@@ -15,6 +15,8 @@ import {
   UtensilsCrossed,
   Leaf,
   ChefHat,
+  Network,
+  ArrowRightLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,11 +28,13 @@ import Footer from "@/components/footer";
 import RadialChart from "@/components/flavorprint/radial-chart";
 import MoleculeTable from "@/components/flavorprint/molecule-table";
 import SpectrumGauge from "@/components/spectrum/spectrum-gauge";
+import FlavorNetwork from "@/components/flavorprint/flavor-network";
+import SubstitutionPanel from "@/components/substitution/substitution-panel";
 import { getRecipeById, getRecipeInstructions } from "@/lib/api/recipedb";
 import { addToHistory } from "@/lib/api/cache";
 import {
-  generateFlavorPrint,
-  calculatePhilosophyScore,
+  generateFlavorPrintAsync,
+  calculatePhilosophyScoreAsync,
 } from "@/lib/algorithms/flavorprint";
 import type { RecipeDetail, FlavorPrint, PhilosophyScore } from "@/types";
 
@@ -67,7 +71,7 @@ export default function RecipePage() {
         });
 
         if (data.recipe && data.ingredients) {
-          const fp = generateFlavorPrint(
+          const fp = await generateFlavorPrintAsync(
             data.recipe.recipe_id,
             data.recipe.recipe_title,
             data.recipe.sub_region,
@@ -76,7 +80,7 @@ export default function RecipePage() {
           );
           setFlavorprint(fp);
 
-          const ps = calculatePhilosophyScore(data.ingredients);
+          const ps = await calculatePhilosophyScoreAsync(data.ingredients);
           setPhilosophy(ps);
         }
 
@@ -336,6 +340,16 @@ export default function RecipePage() {
                 <Atom className="h-3.5 w-3.5" />
                 Molecules
               </TabsTrigger>
+              {flavorprint && (
+                <TabsTrigger value="network" className="gap-1.5">
+                  <Network className="h-3.5 w-3.5" />
+                  Network
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="substitutions" className="gap-1.5">
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                Substitutes
+              </TabsTrigger>
               {instructions.length > 0 && (
                 <TabsTrigger value="instructions" className="gap-1.5">
                   <ChefHat className="h-3.5 w-3.5" />
@@ -472,6 +486,33 @@ export default function RecipePage() {
                   No molecule data available for this recipe.
                 </p>
               )}
+            </TabsContent>
+
+            {/* Network Tab */}
+            {flavorprint && (
+              <TabsContent value="network" className="mt-6">
+                <div className="mb-4 text-center">
+                  <h2 className="font-[family-name:var(--font-playfair)] text-2xl font-bold">
+                    Flavor Network
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Interactive molecular network. Drag nodes, hover to highlight
+                    connections. Shared molecules glow.
+                  </p>
+                </div>
+                <FlavorNetwork
+                  flavorprint={flavorprint}
+                  ingredients={detail.ingredients}
+                />
+              </TabsContent>
+            )}
+
+            {/* Substitutions Tab */}
+            <TabsContent value="substitutions" className="mt-6">
+              <h2 className="mb-6 font-[family-name:var(--font-playfair)] text-2xl font-bold">
+                Ingredient Substitutions
+              </h2>
+              <SubstitutionPanel ingredients={detail.ingredients} />
             </TabsContent>
 
             {/* Instructions Tab */}
