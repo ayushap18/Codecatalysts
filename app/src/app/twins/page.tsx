@@ -3,26 +3,19 @@
 import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2, GitCompareArrows, Search, Globe } from "lucide-react";
+import { Loader2, GitCompareArrows, Search, Globe, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import TwinCard from "@/components/twins/twin-card";
-import { searchRecipesByTitle, getRecipeById } from "@/lib/api/recipedb";
+import { searchRecipesByTitle, getRecipeById, getRecipes } from "@/lib/api/recipedb";
 import {
   generateFlavorPrint,
   calculateTwinScore,
 } from "@/lib/algorithms/flavorprint";
 import type { TwinResult, RecipeDetail, Recipe } from "@/types";
-
-// Diverse cuisines to search twins against
-const TWIN_CUISINES = [
-  "Ethiopian", "Mexican", "Japanese", "Italian", "Thai",
-  "Indian", "French", "Korean", "Moroccan", "Peruvian",
-  "Chinese", "Turkish", "Greek", "Brazilian", "Vietnamese",
-];
 
 export default function TwinsPage() {
   return (
@@ -41,16 +34,22 @@ function TwinsContent() {
   const [twins, setTwins] = useState<TwinResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
-  const [searchedCuisines, setSearchedCuisines] = useState(0);
+  const [apiCalls, setApiCalls] = useState(0);
 
   const findTwins = useCallback(async (recipeId: string | number) => {
     setLoading(true);
     setTwins([]);
-    setSearchedCuisines(0);
+    setApiCalls(0);
     setStatus("Loading source recipe...");
 
+    let calls = 0;
+
     try {
+      // 1 API call: get source recipe
       const source = await getRecipeById(recipeId);
+      calls++;
+      setApiCalls(calls);
+
       if (!source.recipe) {
         setStatus("Recipe not found.");
         setLoading(false);
@@ -72,52 +71,95 @@ function TwinsContent() {
         return;
       }
 
-      setStatus("Searching for flavor twins across cuisines...");
+      setStatus("Finding diverse candidates (smart batch)...");
+
+      // Smart strategy: fetch 2 pages of recipes (2 API calls) for a diverse set
+      // instead of 15 separate cuisine searches (15+ calls)
+      const candidates: Recipe[] = [];
+      const seenIds = new Set<number>([source.recipe.recipe_id]);
+
+      // Fetch 2 random-ish pages to get diverse recipes
+      const page1 = Math.floor(Math.random() * 50) + 1;
+      const page2 = page1 + Math.floor(Math.random() * 20) + 10;
+
+      const [batch1, batch2] = await Promise.all([
+        getRecipes(page1, 20),
+        getRecipes(page2, 20),
+      ]);
+      calls += 2;
+      setApiCalls(calls);
+
+      for (const r of [...batch1.recipes, ...batch2.recipes]) {
+        if (!seenIds.has(r.recipe_id) && r.continent !== source.recipe.continent) {
+          seenIds.add(r.recipe_id);
+          candidates.push(r);
+        }
+      }
+
+      // Also try a few cuisine-specific lookups if we don't have enough diversity
+      // Pick only 3 cuisines that differ from source to minimize calls
+      const diverseCuisines = ["Japanese", "Mexican", "Italian", "Ethiopian", "Thai", "Korean"]
+        .filter((c) => c.toLowerCase() !== source.recipe!.sub_region?.toLowerCase())
+        .slice(0, 3);
+
+      if (candidates.length < 15) {
+        for (const cuisine of diverseCuisines) {
+          try {
+            setStatus(`Checking ${cuisine} recipes...`);
+            const recipes = await searchRecipesByTitle(cuisine);
+            calls++;
+            setApiCalls(calls);
+            for (const r of (Array.isArray(recipes) ? recipes : []).slice(0, 3)) {
+              if (!seenIds.has(r.recipe_id)) {
+                seenIds.add(r.recipe_id);
+                candidates.push(r);
+              }
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      // Now get details for top candidates — limit to 8 max
+      const toAnalyze = candidates.slice(0, 8);
+      setStatus(`Analyzing ${toAnalyze.length} candidates...`);
 
       const results: TwinResult[] = [];
-      let searched = 0;
 
-      for (const cuisine of TWIN_CUISINES) {
-        if (cuisine.toLowerCase() === source.recipe.sub_region?.toLowerCase()) continue;
-
+      for (const candidate of toAnalyze) {
         try {
-          const recipes: Recipe[] = await searchRecipesByTitle(cuisine);
-          const candidates = (Array.isArray(recipes) ? recipes : []).slice(0, 5);
+          const twinDetail = await getRecipeById(candidate.recipe_id);
+          calls++;
+          setApiCalls(calls);
 
-          for (const candidate of candidates) {
-            if (candidate.recipe_id === source.recipe.recipe_id) continue;
-            try {
-              const twinDetail = await getRecipeById(candidate.recipe_id);
-              if (!twinDetail.recipe || !twinDetail.ingredients?.length) continue;
+          if (!twinDetail.recipe || !twinDetail.ingredients?.length) continue;
 
-              const twinFP = generateFlavorPrint(
-                twinDetail.recipe.recipe_id,
-                twinDetail.recipe.recipe_title,
-                twinDetail.recipe.sub_region,
-                twinDetail.recipe.continent,
-                twinDetail.ingredients
-              );
+          const twinFP = generateFlavorPrint(
+            twinDetail.recipe.recipe_id,
+            twinDetail.recipe.recipe_title,
+            twinDetail.recipe.sub_region,
+            twinDetail.recipe.continent,
+            twinDetail.ingredients
+          );
 
-              if (twinFP.totalMolecules === 0) continue;
+          if (twinFP.totalMolecules === 0) continue;
 
-              const result = calculateTwinScore(source as RecipeDetail, sourceFP, twinDetail as RecipeDetail, twinFP);
-              if (result.molecularSimilarity > 0.1) {
-                results.push(result);
-              }
-            } catch { /* skip failed lookups */ }
+          const result = calculateTwinScore(
+            source as RecipeDetail,
+            sourceFP,
+            twinDetail as RecipeDetail,
+            twinFP
+          );
+          if (result.molecularSimilarity > 0.05) {
+            results.push(result);
           }
-        } catch { /* skip failed cuisine searches */ }
-
-        searched++;
-        setSearchedCuisines(searched);
-        setStatus(`Searched ${cuisine}... found ${results.length} potential twins`);
+        } catch { /* skip */ }
       }
 
       results.sort((a, b) => b.twinScore - a.twinScore);
       setTwins(results.slice(0, 5));
       setStatus(
         results.length > 0
-          ? `Found ${results.length} flavor twin(s)!`
+          ? `Found ${results.length} flavor twin(s) using only ${calls} API calls!`
           : "No strong twins found. Try a recipe with more common ingredients."
       );
     } catch (err) {
@@ -192,19 +234,11 @@ function TwinsContent() {
           <div className="flex flex-col items-center gap-4 py-12">
             <Loader2 className="h-8 w-8 animate-spin text-[#4CAF50]" />
             <p className="text-sm text-muted-foreground">{status}</p>
-            {/* Progress bar */}
-            <div className="w-64">
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <motion.div
-                  className="h-full rounded-full bg-[#4CAF50]"
-                  initial={{ width: "0%" }}
-                  animate={{ width: `${(searchedCuisines / TWIN_CUISINES.length) * 100}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">
-                {searchedCuisines}/{TWIN_CUISINES.length} cuisines searched
-              </p>
+            <div className="flex items-center gap-2 rounded-full border border-border px-3 py-1">
+              <Zap className="h-3 w-3 text-yellow-500" />
+              <span className="text-xs text-muted-foreground">
+                {apiCalls} API call{apiCalls !== 1 ? "s" : ""} used
+              </span>
             </div>
           </div>
         )}
@@ -218,15 +252,21 @@ function TwinsContent() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mb-8 rounded-lg border border-[#4CAF50]/20 bg-[#4CAF50]/5 p-4 text-center"
+            className="mb-8 rounded-lg border border-[#4CAF50]/20 bg-[#4CAF50]/5 p-4"
           >
-            <p className="text-sm text-muted-foreground">
-              Showing flavor twins for{" "}
-              <strong className="text-foreground">
-                {sourceDetail.recipe.recipe_title}
-              </strong>{" "}
-              ({sourceDetail.recipe.sub_region}, {sourceDetail.recipe.continent})
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Showing flavor twins for{" "}
+                <strong className="text-foreground">
+                  {sourceDetail.recipe.recipe_title}
+                </strong>{" "}
+                ({sourceDetail.recipe.sub_region}, {sourceDetail.recipe.continent})
+              </p>
+              <div className="flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                <Zap className="h-3 w-3 text-yellow-500" />
+                {apiCalls} calls
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -248,8 +288,12 @@ function TwinsContent() {
             <h3 className="mt-4 text-lg font-semibold">Discover Global Connections</h3>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
               Search for any recipe to find its flavor twins from around the world.
-              We compare molecular profiles across {TWIN_CUISINES.length} different cuisines.
+              Optimized to use minimal API credits with smart caching.
             </p>
+            <div className="mx-auto mt-4 flex max-w-sm items-center justify-center gap-2 rounded-lg border border-yellow-500/20 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/20 dark:text-yellow-300">
+              <Zap className="h-4 w-4 shrink-0" />
+              <span>Uses ~11 API calls per search (vs 91 before). Repeated searches are cached for free.</span>
+            </div>
           </motion.div>
         )}
       </div>

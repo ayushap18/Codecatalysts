@@ -1,3 +1,5 @@
+import { cachedFetch, TTL } from "./cache";
+
 // Use proxy route in production (Vercel HTTPS → HTTP upstream)
 // Direct calls in development (localhost can reach HTTP APIs)
 const IS_SERVER = typeof window === "undefined";
@@ -76,17 +78,16 @@ function normalizeIngredient(raw: Record<string, unknown>) {
   };
 }
 
-export async function searchRecipesByTitle(title: string) {
-  const url = buildUrl("/recipe2-api/recipe-bytitle/recipeByTitle", {
-    title,
-  });
+// Raw fetch (no cache) — used internally
+async function _searchRecipesByTitle(title: string) {
+  const url = buildUrl("/recipe2-api/recipe-bytitle/recipeByTitle", { title });
   const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   const raw = data.data || data.payload?.data || [];
   return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
 }
 
-export async function getRecipeById(id: number | string) {
+async function _getRecipeById(id: number | string) {
   const url = buildUrl(`/recipe2-api/search-recipe/${id}`);
   const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
@@ -98,14 +99,14 @@ export async function getRecipeById(id: number | string) {
   };
 }
 
-export async function getRecipeInstructions(recipeId: number | string) {
+async function _getRecipeInstructions(recipeId: number | string) {
   const url = buildUrl(`/recipe2-api/instructions/${recipeId}`);
   const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   return data.steps || data.instructions || [];
 }
 
-export async function getRecipeOfDay() {
+async function _getRecipeOfDay() {
   const url = buildUrl("/recipe2-api/recipe/recipeofday");
   const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
@@ -113,7 +114,7 @@ export async function getRecipeOfDay() {
   return raw ? normalizeRecipe(raw) : null;
 }
 
-export async function getRecipesByCuisine(
+async function _getRecipesByCuisine(
   region: string,
   opts?: {
     continent?: string;
@@ -138,7 +139,7 @@ export async function getRecipesByCuisine(
   return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
 }
 
-export async function getRecipes(page = 1, limit = 10) {
+async function _getRecipes(page = 1, limit = 10) {
   const url = buildUrl("/recipe2-api/recipe/recipesinfo", {
     page: String(page),
     limit: String(limit),
@@ -150,4 +151,45 @@ export async function getRecipes(page = 1, limit = 10) {
     recipes: Array.isArray(raw) ? raw.map(normalizeRecipe) : [],
     pagination: data.payload?.pagination || data.pagination,
   };
+}
+
+// ── Cached public API ──────────────────────────────────────────
+
+export async function searchRecipesByTitle(title: string) {
+  const key = `search:${title.toLowerCase().trim()}`;
+  const { data } = await cachedFetch(key, () => _searchRecipesByTitle(title), TTL.RECIPE_SEARCH);
+  return data;
+}
+
+export async function getRecipeById(id: number | string) {
+  const key = `recipe:${id}`;
+  const { data } = await cachedFetch(key, () => _getRecipeById(id), TTL.RECIPE_DETAIL);
+  return data;
+}
+
+export async function getRecipeInstructions(recipeId: number | string) {
+  const key = `instructions:${recipeId}`;
+  const { data } = await cachedFetch(key, () => _getRecipeInstructions(recipeId), TTL.RECIPE_INSTRUCTIONS);
+  return data;
+}
+
+export async function getRecipeOfDay() {
+  const key = `recipeofday:${new Date().toDateString()}`;
+  const { data } = await cachedFetch(key, () => _getRecipeOfDay(), TTL.RECIPE_OF_DAY);
+  return data;
+}
+
+export async function getRecipesByCuisine(
+  region: string,
+  opts?: { continent?: string; subRegion?: string; page?: number; limit?: number }
+) {
+  const key = `cuisine:${region}:${opts?.page || 1}:${opts?.limit || 10}`;
+  const { data } = await cachedFetch(key, () => _getRecipesByCuisine(region, opts), TTL.CUISINE_LIST);
+  return data;
+}
+
+export async function getRecipes(page = 1, limit = 10) {
+  const key = `recipes:${page}:${limit}`;
+  const { data } = await cachedFetch(key, () => _getRecipes(page, limit), TTL.CUISINE_LIST);
+  return data;
 }
