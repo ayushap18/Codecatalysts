@@ -141,3 +141,26 @@ export function computeExperimentData(exp: LabExperiment) {
 
   return { ingMols, shared };
 }
+
+// Shared palette of ingredients with molecule data
+export const PALETTE_INGREDIENTS = [
+  "chicken", "onion", "garlic", "tomato", "cumin", "coriander",
+  "yogurt", "butter", "ginger", "chili", "lemon", "cinnamon",
+  "rice", "black pepper", "milk", "coconut", "basil", "lentil",
+  "potato", "carrot", "olive oil", "sugar", "egg", "flour",
+].filter((name) => getMoleculesForIngredient(name).length > 0);
+
+// Extract unique ingredients per cuisine from experiments
+export function getCuisineIngredients(): Record<string, string[]> {
+  const map: Record<string, Set<string>> = {};
+  for (const exp of LAB_EXPERIMENTS) {
+    if (exp.cuisine === "Fusion" || exp.cuisine === "Dessert") continue;
+    if (!map[exp.cuisine]) map[exp.cuisine] = new Set();
+    for (const ing of exp.ingredients) map[exp.cuisine].add(ing);
+  }
+  const result: Record<string, string[]> = {};
+  for (const [cuisine, set] of Object.entries(map)) {
+    result[cuisine] = Array.from(set).sort();
+  }
+  return result;
+}

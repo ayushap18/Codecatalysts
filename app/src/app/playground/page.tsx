@@ -19,9 +19,9 @@ import {
   History,
   Terminal,
   Play,
-  ChevronDown,
   Trash2,
-  Filter,
+  LayoutGrid,
+  Shuffle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -39,17 +39,12 @@ import {
 import { getEntitiesByName, getFoodPairings, getMoleculesByFlavorProfile, getMoleculesByCommonName } from "@/lib/api/flavordb";
 import { searchRecipesByTitle, getRecipeById, getRecipeOfDay, getRecipesByCuisine } from "@/lib/api/recipedb";
 import type { FlavorPrint, PhilosophyScore, RecipeIngredient, FlavorMolecule } from "@/types";
-import { LAB_EXPERIMENTS, CUISINE_CATEGORIES, computeExperimentData } from "./experiments";
+import { LAB_EXPERIMENTS, CUISINE_CATEGORIES, PALETTE_INGREDIENTS, computeExperimentData } from "./experiments";
 import type { LabExperiment } from "./experiments";
+import CompatibilityHeatmap from "./heatmap";
+import FusionGenerator from "./fusion";
 
 // ── Constants ────────────────────────────────────────────────
-const PALETTE_INGREDIENTS = [
-  "chicken", "onion", "garlic", "tomato", "cumin", "coriander",
-  "yogurt", "butter", "ginger", "chili", "lemon", "cinnamon",
-  "rice", "black pepper", "milk", "coconut", "basil", "lentil",
-  "potato", "carrot", "olive oil", "sugar", "egg", "flour",
-].filter((name) => getMoleculesForIngredient(name).length > 0);
-
 const INTRO_STEPS = [
   "BOOTING UP...",
   "LOADING MOLECULAR DATABASE...",
@@ -537,7 +532,7 @@ function ApiExplorer() {
 }
 
 // ── Main Page ────────────────────────────────────────────────
-type LabTab = "kitchen" | "library" | "live" | "api";
+type LabTab = "kitchen" | "library" | "heatmap" | "fusion" | "live" | "api";
 
 export default function PlaygroundPage() {
   const [showIntro, setShowIntro] = useState(true);
@@ -567,6 +562,8 @@ export default function PlaygroundPage() {
   const tabs: { id: LabTab; label: string; icon: React.ReactNode }[] = [
     { id: "kitchen", label: "Molecular Kitchen", icon: <FlaskConical className="h-4 w-4" /> },
     { id: "library", label: `Library (${LAB_EXPERIMENTS.length})`, icon: <BookOpen className="h-4 w-4" /> },
+    { id: "heatmap", label: "Heatmap", icon: <LayoutGrid className="h-4 w-4" /> },
+    { id: "fusion", label: "Fusion Lab", icon: <Shuffle className="h-4 w-4" /> },
     { id: "live", label: "Live Experiment", icon: <TestTubes className="h-4 w-4" /> },
     { id: "api", label: "API Explorer", icon: <Terminal className="h-4 w-4" /> },
   ];
@@ -594,11 +591,11 @@ export default function PlaygroundPage() {
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         {/* Tabs */}
-        <div className="mb-6 flex items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        <div className="mb-6 flex items-center gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-1">
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={cn("flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all", activeTab === tab.id ? "bg-gradient-to-r from-[#FF6F00] to-[#E91E63] text-white shadow-lg" : "text-white/40 hover:bg-white/5 hover:text-white/70")}>
-              {tab.icon}<span className="hidden sm:inline">{tab.label}</span>
+              className={cn("flex shrink-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all", activeTab === tab.id ? "bg-gradient-to-r from-[#FF6F00] to-[#E91E63] text-white shadow-lg" : "text-white/40 hover:bg-white/5 hover:text-white/70")}>
+              {tab.icon}<span className="hidden lg:inline">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -628,6 +625,8 @@ export default function PlaygroundPage() {
           <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
             {activeTab === "kitchen" && <MolecularKitchen key={kitchenKey} initialIngredients={kitchenIngredientsRef.current} />}
             {activeTab === "library" && <FormulaLibrary onLoadExperiment={loadExperiment} />}
+            {activeTab === "heatmap" && <CompatibilityHeatmap />}
+            {activeTab === "fusion" && <FusionGenerator />}
             {activeTab === "live" && <LiveExperiment />}
             {activeTab === "api" && <ApiExplorer />}
           </motion.div>
