@@ -80,53 +80,44 @@ export default function BuilderPage() {
     return () => { cancelled = true; };
   }, [ingredients]);
 
-  // Fetch suggestions when ingredients change
-  useEffect(() => {
-    if (ingredients.length < 1) {
-      setSuggestions([]);
-      return;
-    }
+  // On-demand suggestion fetch — only when user clicks "Get Suggestions"
+  const fetchSuggestions = useCallback(async () => {
+    if (ingredients.length < 1) return;
+    setSugLoading(true);
+    try {
+      const lastIng = ingredients[ingredients.length - 1];
+      const pairData = await getFoodPairings(lastIng);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pairs: string[] = Array.isArray(pairData) ? pairData.map((p: any) =>
+        (p.entity_alias_readable || p.name || "").toLowerCase()
+      ).filter(Boolean) : [];
 
-    let cancelled = false;
-    const fetchSuggestions = async () => {
-      setSugLoading(true);
-      try {
-        const lastIng = ingredients[ingredients.length - 1];
-        const pairData = await getFoodPairings(lastIng);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pairs: string[] = Array.isArray(pairData) ? pairData.map((p: any) =>
-          (p.entity_alias_readable || p.name || "").toLowerCase()
-        ).filter(Boolean) : [];
+      const filtered = pairs
+        .filter((p) => !ingredients.includes(p))
+        .slice(0, 4);
 
-        const filtered = pairs
-          .filter((p) => !ingredients.includes(p))
-          .slice(0, 6);
-
-        const results: Suggestion[] = [];
-        for (const name of filtered) {
-          const mols = await getMoleculesForIngredientAsync(name);
-          if (mols.length > 0) {
-            const cats = new Set<string>();
-            for (const m of mols) {
-              m.flavor_profile.split(",").map((s) => s.trim()).forEach((p) => {
-                cats.add(classifyFlavor(p));
-              });
-            }
-            results.push({
-              name,
-              moleculeCount: mols.length,
-              categories: Array.from(cats).slice(0, 4),
+      const results: Suggestion[] = [];
+      for (const name of filtered) {
+        const mols = await getMoleculesForIngredientAsync(name);
+        if (mols.length > 0) {
+          const cats = new Set<string>();
+          for (const m of mols) {
+            m.flavor_profile.split(",").map((s) => s.trim()).forEach((p) => {
+              cats.add(classifyFlavor(p));
             });
           }
+          results.push({
+            name,
+            moleculeCount: mols.length,
+            categories: Array.from(cats).slice(0, 4),
+          });
         }
-        if (!cancelled) setSuggestions(results);
-      } catch {
-        if (!cancelled) setSuggestions([]);
       }
-      if (!cancelled) setSugLoading(false);
-    };
-    fetchSuggestions();
-    return () => { cancelled = true; };
+      setSuggestions(results);
+    } catch {
+      setSuggestions([]);
+    }
+    setSugLoading(false);
   }, [ingredients]);
 
   const addIngredient = useCallback(
@@ -350,11 +341,29 @@ export default function BuilderPage() {
                           </div>
                         </button>
                       ))}
+                      <button
+                        onClick={fetchSuggestions}
+                        className="mt-1 w-full text-center text-xs text-muted-foreground hover:text-[#FF6F00]"
+                      >
+                        Refresh suggestions
+                      </button>
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Add an ingredient to get pairing suggestions from FlavorDB.
-                    </p>
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchSuggestions}
+                        disabled={ingredients.length === 0}
+                        className="w-full gap-1.5"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Get Pairing Suggestions
+                      </Button>
+                      <p className="mt-2 text-[10px] text-muted-foreground text-center">
+                        Uses 1 API credit to find molecular pairings
+                      </p>
+                    </div>
                   )}
                 </CardContent>
               </Card>

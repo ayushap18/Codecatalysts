@@ -12,7 +12,7 @@ export interface CuisineDNA {
 export async function computeCuisineDNA(
   cuisineName: string,
   color: string,
-  sampleSize = 5
+  sampleSize = 3
 ): Promise<CuisineDNA> {
   const recipes = await getRecipesByCuisine(cuisineName, { limit: sampleSize });
   const recipeList = Array.isArray(recipes) ? recipes : [];
@@ -25,12 +25,15 @@ export async function computeCuisineDNA(
       const detail = await getRecipeById(recipe.recipe_id);
       if (!detail.recipe || !detail.ingredients?.length) continue;
 
+      // Cap ingredients to 8 to save API credits
+      const cappedIngredients = detail.ingredients.slice(0, 8);
+
       const fp = await generateFlavorPrintAsync(
         detail.recipe.recipe_id,
         detail.recipe.recipe_title,
         detail.recipe.sub_region,
         detail.recipe.continent,
-        detail.ingredients
+        cappedIngredients
       );
 
       if (fp.totalMolecules === 0) continue;

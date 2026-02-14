@@ -34,29 +34,20 @@ export async function findSubstitutions(
     ).filter(Boolean) : [];
     candidates.push(...pairs);
   } catch {
-    // If pairings fail, use fallback
+    // If pairings fail, return empty — don't waste credits on fallback guesses
   }
 
-  // Add some common substitution candidates if we don't have enough
-  const fallbacks = [
-    "butter", "olive oil", "coconut", "yogurt", "milk", "cream",
-    "lemon", "lime", "vinegar", "tomato", "onion", "garlic",
-    "ginger", "cumin", "coriander", "basil", "oregano", "thyme",
-    "chicken", "tofu", "mushroom", "lentil", "bean",
-  ];
-  for (const fb of fallbacks) {
-    if (!candidates.includes(fb)) candidates.push(fb);
-  }
+  if (candidates.length === 0) return [];
 
   // Filter out the original and existing ingredients
   const filtered = candidates.filter(
     (c) => c !== original && !existingIngredients.includes(c)
   );
 
-  // Score each candidate
+  // Score each candidate — limit to 8 to save API credits
   const results: SubstitutionResult[] = [];
 
-  for (const candidate of filtered.slice(0, 15)) {
+  for (const candidate of filtered.slice(0, 8)) {
     const subMols = await getMoleculesForIngredientAsync(candidate);
     const subMolNames = subMols.map((m) => m.common_name);
 
