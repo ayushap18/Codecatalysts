@@ -36,13 +36,14 @@ import {
   classifyFlavor,
   FLAVOR_CATEGORIES,
 } from "@/lib/algorithms/flavorprint";
-import { getEntitiesByName, getFoodPairings, getMoleculesByFlavorProfile, getMoleculesByCommonName } from "@/lib/api/flavordb";
-import { searchRecipesByTitle, getRecipeById, getRecipeOfDay, getRecipesByCuisine } from "@/lib/api/recipedb";
+import { getEntitiesByName } from "@/lib/api/flavordb";
 import type { FlavorPrint, PhilosophyScore, RecipeIngredient, FlavorMolecule } from "@/types";
 import { LAB_EXPERIMENTS, CUISINE_CATEGORIES, PALETTE_INGREDIENTS, computeExperimentData } from "./experiments";
 import type { LabExperiment } from "./experiments";
 import CompatibilityHeatmap from "./heatmap";
 import FusionGenerator from "./fusion";
+import { ALL_API_ENDPOINTS, API_ENDPOINT_CATEGORIES } from "./api-endpoints";
+import type { ApiEndpoint as FullApiEndpoint } from "./api-endpoints";
 
 // ── Constants ────────────────────────────────────────────────
 const INTRO_STEPS = [
@@ -428,38 +429,35 @@ function LiveExperiment() {
 }
 
 // ── API Explorer Tab ─────────────────────────────────────────
-interface ApiEndpoint {
-  id: string;
-  name: string;
-  source: "FlavorDB" | "RecipeDB";
-  method: "GET";
-  path: string;
-  description: string;
-  exampleParams: Record<string, string>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  runner: () => Promise<any>;
-}
-
-const API_ENDPOINTS: ApiEndpoint[] = [
-  { id: "fdb-entity", name: "Get Entity by Name", source: "FlavorDB", method: "GET", path: "/flavordb/entities/by-entity-alias-readable", description: "Look up a food ingredient and get its flavor molecules.", exampleParams: { entity_alias_readable: "mango" }, runner: () => getEntitiesByName("mango", 0, 5) },
-  { id: "fdb-pairings", name: "Get Food Pairings", source: "FlavorDB", method: "GET", path: "/flavordb/food/by-alias", description: "Find ingredients that pair well with a given food item.", exampleParams: { food_pair: "tomato" }, runner: () => getFoodPairings("tomato") },
-  { id: "fdb-mol-flavor", name: "Molecules by Flavor Profile", source: "FlavorDB", method: "GET", path: "/flavordb/molecules_data/by-flavorProfile", description: "Search molecules by their flavor descriptor (e.g. sweet, spicy).", exampleParams: { flavorProfile: "sweet" }, runner: () => getMoleculesByFlavorProfile("sweet", 0, 5) },
-  { id: "fdb-mol-name", name: "Molecules by Common Name", source: "FlavorDB", method: "GET", path: "/flavordb/molecules_data/by-commonName", description: "Look up a specific molecule by its common chemical name.", exampleParams: { commonName: "Linalool" }, runner: () => getMoleculesByCommonName("Linalool", 0, 5) },
-  { id: "rdb-search", name: "Search Recipes by Title", source: "RecipeDB", method: "GET", path: "/recipe2-api/recipe-bytitle/recipeByTitle", description: "Full-text search for recipes by title keyword.", exampleParams: { title: "chicken" }, runner: () => searchRecipesByTitle("chicken") },
-  { id: "rdb-byid", name: "Get Recipe by ID", source: "RecipeDB", method: "GET", path: "/recipe2-api/search-recipe/{id}", description: "Fetch full recipe details (ingredients, nutrition) by ID.", exampleParams: { id: "1" }, runner: () => getRecipeById(1) },
-  { id: "rdb-ofday", name: "Recipe of the Day", source: "RecipeDB", method: "GET", path: "/recipe2-api/recipe/recipeofday", description: "Get the featured recipe of the day. Changes daily.", exampleParams: {}, runner: () => getRecipeOfDay() },
-  { id: "rdb-cuisine", name: "Recipes by Cuisine", source: "RecipeDB", method: "GET", path: "/recipe2-api/recipes_cuisine/cuisine/{region}", description: "Browse recipes filtered by cuisine region.", exampleParams: { region: "Indian", page: "1", page_size: "3" }, runner: () => getRecipesByCuisine("Indian", { page: 1, limit: 3 }) },
-];
-
 function ApiExplorer() {
   const [running, setRunning] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [results, setResults] = useState<Record<string, { data: any; time: number; error?: string }>>({});
-  const [filter, setFilter] = useState<"All" | "FlavorDB" | "RecipeDB">("All");
+  const [sourceFilter, setSourceFilter] = useState<"All" | "FlavorDB" | "RecipeDB">("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const endpoints = filter === "All" ? API_ENDPOINTS : API_ENDPOINTS.filter((e) => e.source === filter);
+  const filteredEndpoints = useMemo(() => {
+    let list = ALL_API_ENDPOINTS;
+    if (sourceFilter !== "All") list = list.filter((e) => e.source === sourceFilter);
+    if (categoryFilter !== "All") list = list.filter((e) => e.category === categoryFilter);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((e) => e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q) || e.path.toLowerCase().includes(q));
+    }
+    return list;
+  }, [sourceFilter, categoryFilter, searchQuery]);
 
-  const runEndpoint = useCallback(async (ep: ApiEndpoint) => {
+  const liveCount = ALL_API_ENDPOINTS.filter((e) => e.status === "live").length;
+  const demoCount = ALL_API_ENDPOINTS.filter((e) => e.status === "demo").length;
+
+  const runEndpoint = useCallback(async (ep: FullApiEndpoint) => {
+    if (ep.status === "demo") {
+      // Show expected output instantly for demo endpoints
+      setResults((prev) => ({ ...prev, [ep.id]: { data: ep.expectedOutput ? JSON.parse(ep.expectedOutput) : { message: "Demo endpoint — no live API wrapper available" }, time: 0 } }));
+      return;
+    }
+    if (!ep.runner) return;
     setRunning(ep.id);
     const start = Date.now();
     try {
@@ -473,27 +471,52 @@ function ApiExplorer() {
 
   return (
     <div className="space-y-6">
-      <div className="mx-auto max-w-3xl text-center">
+      <div className="mx-auto max-w-4xl text-center">
         <h2 className="font-[family-name:var(--font-playfair)] text-xl font-bold text-white">API <span className="bg-gradient-to-r from-[#FF6F00] to-[#E91E63] bg-clip-text text-transparent">Explorer</span></h2>
-        <p className="mt-2 text-sm text-white/40">All FlavorDB and RecipeDB endpoints with live example runners. Each call uses 1 API credit (cached 24h).</p>
+        <p className="mt-2 text-sm text-white/40">All {ALL_API_ENDPOINTS.length} FlavorDB and RecipeDB endpoints. <span className="text-emerald-400">{liveCount} live</span> with real API runners, <span className="text-yellow-400">{demoCount} demo</span> with expected output.</p>
       </div>
 
-      <div className="mx-auto flex max-w-3xl justify-center gap-2">
+      {/* Search */}
+      <div className="mx-auto max-w-4xl">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+          <input type="text" placeholder="Search endpoints by name, description, or path..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-10 w-full rounded-lg border border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/25 focus:border-[#FF6F00]/50 focus:outline-none" />
+        </div>
+      </div>
+
+      {/* Source Filter */}
+      <div className="mx-auto flex max-w-4xl justify-center gap-2">
         {(["All", "FlavorDB", "RecipeDB"] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={cn("rounded-full px-4 py-1.5 text-xs font-medium transition-all", filter === f ? "bg-[#FF6F00] text-white" : "bg-white/5 text-white/40 hover:bg-white/10")}>{f}</button>
+          <button key={f} onClick={() => setSourceFilter(f)} className={cn("rounded-full px-4 py-1.5 text-xs font-medium transition-all", sourceFilter === f ? "bg-[#FF6F00] text-white" : "bg-white/5 text-white/40 hover:bg-white/10")}>{f}</button>
         ))}
       </div>
 
-      <div className="mx-auto max-w-3xl space-y-3">
-        {endpoints.map((ep) => {
+      {/* Category Filter */}
+      <div className="mx-auto flex max-w-4xl flex-wrap justify-center gap-1.5">
+        {API_ENDPOINT_CATEGORIES.map((cat) => (
+          <button key={cat} onClick={() => setCategoryFilter(cat)}
+            className={cn("rounded-full px-3 py-1 text-[10px] font-medium transition-all", categoryFilter === cat ? "bg-emerald-500 text-white" : "bg-white/5 text-white/30 hover:bg-white/10 hover:text-white/50")}>
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      <p className="mx-auto max-w-4xl text-xs text-white/30">{filteredEndpoints.length} endpoint{filteredEndpoints.length !== 1 ? "s" : ""}</p>
+
+      <div className="mx-auto max-w-4xl space-y-3">
+        {filteredEndpoints.map((ep) => {
           const res = results[ep.id];
+          const isDemo = ep.status === "demo";
           return (
-            <div key={ep.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div key={ep.id} className={cn("rounded-xl border p-4", isDemo ? "border-yellow-500/10 bg-white/[0.02]" : "border-white/10 bg-white/[0.03]")}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-2">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
                     <Badge variant="secondary" className={cn("border-0 text-[10px]", ep.source === "FlavorDB" ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400")}>{ep.source}</Badge>
-                    <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] text-emerald-400">{ep.method}</span>
+                    <span className={cn("rounded px-1.5 py-0.5 font-mono text-[10px]", ep.method === "POST" ? "bg-orange-500/20 text-orange-400" : "bg-emerald-500/20 text-emerald-400")}>{ep.method}</span>
+                    <Badge variant="secondary" className={cn("border-0 text-[10px]", isDemo ? "bg-yellow-500/20 text-yellow-400" : "bg-emerald-500/20 text-emerald-400")}>{isDemo ? "DEMO" : "LIVE"}</Badge>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] text-white/20">{ep.category}</span>
                   </div>
                   <h3 className="text-sm font-semibold text-white">{ep.name}</h3>
                   <p className="mt-1 text-[11px] text-white/40">{ep.description}</p>
@@ -506,17 +529,21 @@ function ApiExplorer() {
                     </div>
                   )}
                 </div>
-                <Button onClick={() => runEndpoint(ep)} disabled={running === ep.id} size="sm" className="shrink-0 gap-1.5 bg-white/10 text-white hover:bg-white/20 disabled:opacity-40">
+                <Button onClick={() => runEndpoint(ep)} disabled={running === ep.id} size="sm"
+                  className={cn("shrink-0 gap-1.5 text-white disabled:opacity-40", isDemo ? "bg-yellow-500/20 hover:bg-yellow-500/30" : "bg-white/10 hover:bg-white/20")}>
                   {running === ep.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                  Run
+                  {isDemo ? "Preview" : "Run"}
                 </Button>
               </div>
               {/* Result */}
               {res && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 overflow-hidden">
                   <div className="flex items-center justify-between rounded-t-lg bg-white/5 px-3 py-1.5">
-                    <span className="font-mono text-[10px] text-white/40">{res.error ? "ERROR" : "RESPONSE"}</span>
-                    <span className="font-mono text-[10px] text-emerald-400">{res.time}ms</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] text-white/40">{res.error ? "ERROR" : isDemo ? "EXPECTED OUTPUT" : "RESPONSE"}</span>
+                      {isDemo && !res.error && <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[8px] font-bold text-yellow-400">SIMULATED</span>}
+                    </div>
+                    <span className="font-mono text-[10px] text-emerald-400">{res.time === 0 ? "instant" : `${res.time}ms`}</span>
                   </div>
                   <pre className="max-h-[200px] overflow-auto rounded-b-lg bg-black/50 p-3 font-mono text-[10px] leading-relaxed text-white/60">
                     {res.error ? res.error : JSON.stringify(res.data, null, 2)}
@@ -565,7 +592,7 @@ export default function PlaygroundPage() {
     { id: "heatmap", label: "Heatmap", icon: <LayoutGrid className="h-4 w-4" /> },
     { id: "fusion", label: "Fusion Lab", icon: <Shuffle className="h-4 w-4" /> },
     { id: "live", label: "Live Experiment", icon: <TestTubes className="h-4 w-4" /> },
-    { id: "api", label: "API Explorer", icon: <Terminal className="h-4 w-4" /> },
+    { id: "api", label: `API Explorer (${ALL_API_ENDPOINTS.length})`, icon: <Terminal className="h-4 w-4" /> },
   ];
 
   return (

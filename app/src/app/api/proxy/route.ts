@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = (process.env.API_BASE || "http://cosylab.iiitd.edu.in:6969").trim();
+const API_BASE = (process.env.API_BASE || "http://192.168.1.92:6969").trim();
 const API_KEY = (process.env.API_KEY || "").trim();
 
 const corsHeaders = {
