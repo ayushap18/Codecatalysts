@@ -1,13 +1,27 @@
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE || "http://cosylab.iiitd.edu.in:6969";
-const RECIPEDB_BASE = `${BASE_URL}/recipe2-api`;
+// Use proxy route in production (Vercel HTTPS → HTTP upstream)
+// Direct calls in development (localhost can reach HTTP APIs)
+const IS_SERVER = typeof window === "undefined";
+const USE_PROXY =
+  !IS_SERVER && typeof window !== "undefined" && window.location.protocol === "https:";
 
+const DIRECT_BASE = "http://cosylab.iiitd.edu.in:6969";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
+function buildUrl(path: string, params?: Record<string, string>): string {
+  if (USE_PROXY) {
+    const p = new URLSearchParams({ path });
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => p.set(k, v));
+    }
+    return `/api/proxy?${p.toString()}`;
+  }
+  const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
+  return `${DIRECT_BASE}${path}${qs}`;
+}
+
 function authHeaders(): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  if (USE_PROXY) return {}; // proxy handles auth server-side
+  const h: Record<string, string> = { "Content-Type": "application/json" };
   if (API_KEY) h["Authorization"] = `Bearer ${API_KEY}`;
   return h;
 }
@@ -48,7 +62,6 @@ function normalizeRecipe(raw: Record<string, unknown>) {
   };
 }
 
-// Normalize ingredient fields
 function normalizeIngredient(raw: Record<string, unknown>) {
   return {
     recipe_no: Number(raw.recipe_no ?? 0),
@@ -64,19 +77,18 @@ function normalizeIngredient(raw: Record<string, unknown>) {
 }
 
 export async function searchRecipesByTitle(title: string) {
-  const res = await fetch(
-    `${RECIPEDB_BASE}/recipe-bytitle/recipeByTitle?title=${encodeURIComponent(title)}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/recipe2-api/recipe-bytitle/recipeByTitle", {
+    title,
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   const raw = data.data || data.payload?.data || [];
   return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
 }
 
 export async function getRecipeById(id: number | string) {
-  const res = await fetch(`${RECIPEDB_BASE}/search-recipe/${id}`, {
-    headers: authHeaders(),
-  });
+  const url = buildUrl(`/recipe2-api/search-recipe/${id}`);
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   return {
     recipe: data.recipe ? normalizeRecipe(data.recipe) : null,
@@ -87,17 +99,15 @@ export async function getRecipeById(id: number | string) {
 }
 
 export async function getRecipeInstructions(recipeId: number | string) {
-  const res = await fetch(`${RECIPEDB_BASE}/instructions/${recipeId}`, {
-    headers: authHeaders(),
-  });
+  const url = buildUrl(`/recipe2-api/instructions/${recipeId}`);
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   return data.steps || data.instructions || [];
 }
 
 export async function getRecipeOfDay() {
-  const res = await fetch(`${RECIPEDB_BASE}/recipe/recipeofday`, {
-    headers: authHeaders(),
-  });
+  const url = buildUrl("/recipe2-api/recipe/recipeofday");
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   const raw = data.payload?.data || data.data;
   return raw ? normalizeRecipe(raw) : null;
@@ -112,25 +122,28 @@ export async function getRecipesByCuisine(
     limit?: number;
   }
 ) {
-  const params = new URLSearchParams();
-  if (opts?.continent) params.set("continent", opts.continent);
-  if (opts?.subRegion) params.set("subRegion", opts.subRegion);
-  params.set("page", String(opts?.page || 1));
-  params.set("page_size", String(opts?.limit || 10));
-  const res = await fetch(
-    `${RECIPEDB_BASE}/recipes_cuisine/cuisine/${encodeURIComponent(region)}?${params}`,
-    { headers: authHeaders() }
+  const params: Record<string, string> = {
+    page: String(opts?.page || 1),
+    page_size: String(opts?.limit || 10),
+  };
+  if (opts?.continent) params.continent = opts.continent;
+  if (opts?.subRegion) params.subRegion = opts.subRegion;
+  const url = buildUrl(
+    `/recipe2-api/recipes_cuisine/cuisine/${encodeURIComponent(region)}`,
+    params
   );
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   const raw = data.data || data.payload?.data || [];
   return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
 }
 
 export async function getRecipes(page = 1, limit = 10) {
-  const res = await fetch(
-    `${RECIPEDB_BASE}/recipe/recipesinfo?page=${page}&limit=${limit}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/recipe2-api/recipe/recipesinfo", {
+    page: String(page),
+    limit: String(limit),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   const data = await res.json();
   const raw = data.payload?.data || data.data || [];
   return {

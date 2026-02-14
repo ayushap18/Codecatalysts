@@ -1,10 +1,25 @@
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE || "http://cosylab.iiitd.edu.in:6969";
-const FLAVORDB_BASE = `${BASE_URL}/flavordb`;
+// Use proxy route in production (Vercel HTTPS → HTTP upstream)
+const IS_SERVER = typeof window === "undefined";
+const USE_PROXY =
+  !IS_SERVER && typeof window !== "undefined" && window.location.protocol === "https:";
 
+const DIRECT_BASE = "http://cosylab.iiitd.edu.in:6969";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
+function buildUrl(path: string, params?: Record<string, string>): string {
+  if (USE_PROXY) {
+    const p = new URLSearchParams({ path });
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => p.set(k, v));
+    }
+    return `/api/proxy?${p.toString()}`;
+  }
+  const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
+  return `${DIRECT_BASE}${path}${qs}`;
+}
+
 function authHeaders(): Record<string, string> {
+  if (USE_PROXY) return {};
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -19,10 +34,12 @@ export async function getEntitiesByName(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/entities/by-entity-alias-readable?entity_alias_readable=${encodeURIComponent(name)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/entities/by-entity-alias-readable", {
+    entity_alias_readable: name,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -33,10 +50,13 @@ export async function getEntitiesByCategory(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/entities/by-name-and-category?name=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/entities/by-name-and-category", {
+    name,
+    category,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -46,20 +66,22 @@ export async function getEntitiesByNaturalSource(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/entities/by-natural-source?naturalSource=${encodeURIComponent(source)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/entities/by-natural-source", {
+    naturalSource: source,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
 
 // Food Pairing Controller
 export async function getFoodPairings(ingredient: string) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/food/by-alias?food_pair=${encodeURIComponent(ingredient)}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/food/by-alias", {
+    food_pair: ingredient,
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return null;
   return res.json();
 }
@@ -70,10 +92,12 @@ export async function getMoleculesByFlavorProfile(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/molecules_data/by-flavorProfile?flavorProfile=${encodeURIComponent(flavor)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/molecules_data/by-flavorProfile", {
+    flavorProfile: flavor,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -83,10 +107,12 @@ export async function getMoleculesByCommonName(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/molecules_data/by-commonName?commonName=${encodeURIComponent(name)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/molecules_data/by-commonName", {
+    commonName: name,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -96,10 +122,12 @@ export async function getMoleculesByType(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/molecules_data/filter-by-type?type=${encodeURIComponent(type)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/molecules_data/filter-by-type", {
+    type,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -110,10 +138,12 @@ export async function getPropertiesByDescription(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/properties/by-description?description=${encodeURIComponent(description)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/properties/by-description", {
+    description,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
@@ -123,10 +153,12 @@ export async function getPropertiesByTasteThreshold(
   page = 0,
   size = 20
 ) {
-  const res = await fetch(
-    `${FLAVORDB_BASE}/properties/taste-threshold?values=${encodeURIComponent(values)}&page=${page}&size=${size}`,
-    { headers: authHeaders() }
-  );
+  const url = buildUrl("/flavordb/properties/taste-threshold", {
+    values,
+    page: String(page),
+    size: String(size),
+  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) return { content: [] };
   return res.json();
 }
