@@ -20,6 +20,7 @@ import {
   getMoleculesForIngredient,
   FLAVOR_CATEGORIES,
 } from "@/lib/algorithms/flavorprint";
+import { addToHistory } from "@/lib/api/cache";
 
 interface IngredientAnalysis {
   name: string;
@@ -106,6 +107,13 @@ export default function ExplorePage() {
     if (result) {
       setAnalyses((prev) => [result, ...prev]);
       setNotFound(null);
+      // Track in history
+      addToHistory({
+        type: "explore",
+        title: `Explore: ${name}`,
+        subtitle: `${result.molecules.length} molecules`,
+        path: `/explore?q=${encodeURIComponent(name)}`,
+      });
     } else {
       setNotFound(name);
     }

@@ -27,6 +27,7 @@ import RadialChart from "@/components/flavorprint/radial-chart";
 import MoleculeTable from "@/components/flavorprint/molecule-table";
 import SpectrumGauge from "@/components/spectrum/spectrum-gauge";
 import { getRecipeById, getRecipeInstructions } from "@/lib/api/recipedb";
+import { addToHistory } from "@/lib/api/cache";
 import {
   generateFlavorPrint,
   calculatePhilosophyScore,
@@ -54,6 +55,16 @@ export default function RecipePage() {
           return;
         }
         setDetail(data as RecipeDetail);
+
+        // Track in history
+        addToHistory({
+          type: "recipe",
+          title: data.recipe.recipe_title,
+          subtitle: `${data.recipe.sub_region} - ${data.recipe.continent}`,
+          path: `/recipe/${recipeId}`,
+          recipeId: data.recipe.recipe_id,
+          img_url: data.recipe.img_url,
+        });
 
         if (data.recipe && data.ingredients) {
           const fp = generateFlavorPrint(

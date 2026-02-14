@@ -13,6 +13,7 @@ import Footer from "@/components/footer";
 import SpectrumGauge from "@/components/spectrum/spectrum-gauge";
 import RadialChart from "@/components/flavorprint/radial-chart";
 import { searchRecipesByTitle, getRecipeById } from "@/lib/api/recipedb";
+import { addToHistory } from "@/lib/api/cache";
 import { generateFlavorPrint, calculatePhilosophyScore } from "@/lib/algorithms/flavorprint";
 import type { RecipeDetail, FlavorPrint, PhilosophyScore } from "@/types";
 
@@ -50,6 +51,15 @@ function SpectrumContent() {
         data.ingredients
       );
       const ps = calculatePhilosophyScore(data.ingredients);
+      // Track in history
+      addToHistory({
+        type: "spectrum",
+        title: `Spectrum: ${data.recipe.recipe_title}`,
+        subtitle: `${ps.label} (${ps.score}%)`,
+        path: `/spectrum?recipeId=${data.recipe.recipe_id}`,
+        recipeId: data.recipe.recipe_id,
+        img_url: data.recipe.img_url,
+      });
       setRecipes((prev) => [
         ...prev,
         { detail: data as RecipeDetail, fp, philosophy: ps },

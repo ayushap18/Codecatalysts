@@ -11,6 +11,7 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import TwinCard from "@/components/twins/twin-card";
 import { searchRecipesByTitle, getRecipeById, getRecipes } from "@/lib/api/recipedb";
+import { addToHistory } from "@/lib/api/cache";
 import {
   generateFlavorPrint,
   calculateTwinScore,
@@ -56,6 +57,16 @@ function TwinsContent() {
         return;
       }
       setSourceDetail(source as RecipeDetail);
+
+      // Track in history
+      addToHistory({
+        type: "twins",
+        title: `Twins: ${source.recipe.recipe_title}`,
+        subtitle: `${source.recipe.sub_region} - ${source.recipe.continent}`,
+        path: `/twins?recipeId=${source.recipe.recipe_id}`,
+        recipeId: source.recipe.recipe_id,
+        img_url: source.recipe.img_url,
+      });
 
       const sourceFP = generateFlavorPrint(
         source.recipe.recipe_id,

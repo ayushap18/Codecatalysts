@@ -15,6 +15,10 @@ import {
   ArrowRight,
   Sparkles,
   TrendingUp,
+  History,
+  Trash2,
+  X,
+  Database,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { searchRecipesByTitle, getRecipeOfDay } from "@/lib/api/recipedb";
+import { addToHistory, getHistory, removeFromHistory, clearHistory, clearAll, getCacheStats, type HistoryEntry } from "@/lib/api/cache";
 import type { Recipe } from "@/types";
 
 const FEATURES = [
@@ -68,6 +73,17 @@ const STATS = [
   { label: "Ingredients", value: "23,500+", icon: Beaker },
 ];
 
+function formatTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -75,14 +91,23 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [recipeOfDay, setRecipeOfDay] = useState<Recipe | null>(null);
+  const [history, setHistoryState] = useState<HistoryEntry[]>([]);
+  const [cacheStats, setCacheStats] = useState({ entries: 0, sizeKB: 0 });
 
   useEffect(() => {
+    setHistoryState(getHistory());
+    setCacheStats(getCacheStats());
     getRecipeOfDay()
       .then((data) => {
         if (data) setRecipeOfDay(Array.isArray(data) ? data[0] : data);
       })
       .catch(() => {});
   }, []);
+
+  function refreshHistory() {
+    setHistoryState(getHistory());
+    setCacheStats(getCacheStats());
+  }
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -91,7 +116,15 @@ export default function HomePage() {
     setSearched(true);
     try {
       const data = await searchRecipesByTitle(query);
-      setResults(Array.isArray(data) ? data.slice(0, 20) : []);
+      const list = Array.isArray(data) ? data.slice(0, 20) : [];
+      setResults(list);
+      addToHistory({
+        type: "search",
+        title: `Search: "${query}"`,
+        subtitle: `${list.length} results`,
+        path: `/?q=${encodeURIComponent(query)}`,
+      });
+      refreshHistory();
     } catch {
       setResults([]);
     }
@@ -270,9 +303,18 @@ export default function HomePage() {
                   >
                     <Card
                       className="group cursor-pointer overflow-hidden transition-shadow hover:shadow-lg"
-                      onClick={() =>
-                        router.push(`/recipe/${recipe.recipe_id}`)
-                      }
+                      onClick={() => {
+                        addToHistory({
+                          type: "recipe",
+                          title: recipe.recipe_title,
+                          subtitle: `${recipe.sub_region} - ${recipe.continent}`,
+                          path: `/recipe/${recipe.recipe_id}`,
+                          recipeId: recipe.recipe_id,
+                          img_url: recipe.img_url,
+                        });
+                        refreshHistory();
+                        router.push(`/recipe/${recipe.recipe_id}`);
+                      }}
                     >
                       <CardContent className="p-0">
                         {recipe.img_url ? (
@@ -437,6 +479,120 @@ export default function HomePage() {
                     </div>
                   </div>
                 </Card>
+              </motion.div>
+            </section>
+          )}
+
+          {/* History & Cache */}
+          {history.length > 0 && (
+            <section className="mx-auto max-w-6xl px-4 pb-16">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.1 }}
+              >
+                <div className="mb-6 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History className="h-5 w-5 text-[#FF6F00]" />
+                    <h2 className="font-[family-name:var(--font-playfair)] text-2xl font-bold">
+                      Recent Activity
+                    </h2>
+                    <Badge variant="secondary" className="text-xs">
+                      {history.length} items
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Database className="h-3 w-3" />
+                      {cacheStats.entries} cached / {cacheStats.sizeKB}KB
+                    </span>
+                    <button
+                      onClick={() => {
+                        clearHistory();
+                        refreshHistory();
+                      }}
+                      className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-red-300 hover:text-red-500"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clear History
+                    </button>
+                    <button
+                      onClick={() => {
+                        clearAll();
+                        refreshHistory();
+                      }}
+                      className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-red-300 hover:text-red-500"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {history.slice(0, 9).map((entry) => (
+                    <motion.div
+                      key={entry.path + entry.timestamp}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      whileHover={{ y: -2 }}
+                    >
+                      <Card
+                        className="group cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
+                        onClick={() => {
+                          if (entry.path.startsWith("/?q=")) {
+                            const q = decodeURIComponent(entry.path.replace("/?q=", ""));
+                            setQuery(q);
+                            handleSearch({ preventDefault: () => {} } as React.FormEvent);
+                          } else {
+                            router.push(entry.path);
+                          }
+                        }}
+                      >
+                        <CardContent className="flex items-center gap-3 p-3">
+                          {entry.img_url ? (
+                            <img
+                              src={entry.img_url}
+                              alt={entry.title}
+                              className="h-12 w-12 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
+                              {entry.type === "search" && <Search className="h-5 w-5 text-muted-foreground" />}
+                              {entry.type === "recipe" && <ChefHat className="h-5 w-5 text-[#FF6F00]" />}
+                              {entry.type === "twins" && <GitCompareArrows className="h-5 w-5 text-[#4CAF50]" />}
+                              {entry.type === "spectrum" && <BarChart3 className="h-5 w-5 text-[#2196F3]" />}
+                              {entry.type === "explore" && <Beaker className="h-5 w-5 text-[#9C27B0]" />}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">
+                              {entry.title}
+                            </p>
+                            {entry.subtitle && (
+                              <p className="truncate text-xs text-muted-foreground">
+                                {entry.subtitle}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground/60">
+                              {formatTimeAgo(entry.timestamp)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromHistory(entry.path);
+                              refreshHistory();
+                            }}
+                            className="shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                          >
+                            <X className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
               </motion.div>
             </section>
           )}

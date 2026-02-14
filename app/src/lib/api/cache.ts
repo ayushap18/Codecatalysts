@@ -120,3 +120,75 @@ export function getCacheStats(): { entries: number; sizeKB: number } {
   }
   return { entries, sizeKB: Math.round(size / 1024) };
 }
+
+// ── Search & View History ──────────────────────────────────────
+// Persists indefinitely until user clears manually.
+
+const HISTORY_KEY = "fp_history";
+
+export interface HistoryEntry {
+  type: "search" | "recipe" | "explore" | "twins" | "spectrum";
+  title: string;
+  subtitle?: string;
+  path: string;
+  timestamp: number;
+  recipeId?: number;
+  img_url?: string;
+}
+
+function loadHistory(): HistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
+  } catch {
+    // storage full — trim oldest half
+    const trimmed = entries.slice(0, Math.ceil(entries.length / 2));
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    } catch { /* give up */ }
+  }
+}
+
+/** Add an entry to history. Deduplicates by path. Max 50 entries. */
+export function addToHistory(entry: Omit<HistoryEntry, "timestamp">): void {
+  const history = loadHistory();
+  // Remove duplicate if same path already exists
+  const filtered = history.filter((h) => h.path !== entry.path);
+  // Prepend new entry
+  filtered.unshift({ ...entry, timestamp: Date.now() });
+  // Cap at 50
+  saveHistory(filtered.slice(0, 50));
+}
+
+/** Get full history, newest first */
+export function getHistory(): HistoryEntry[] {
+  return loadHistory();
+}
+
+/** Remove a single entry by path */
+export function removeFromHistory(path: string): void {
+  const history = loadHistory();
+  saveHistory(history.filter((h) => h.path !== path));
+}
+
+/** Clear all history */
+export function clearHistory(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(HISTORY_KEY);
+}
+
+/** Clear everything — cache + history */
+export function clearAll(): void {
+  clearCache();
+  clearHistory();
+}
