@@ -6,7 +6,7 @@ const IS_SERVER = typeof window === "undefined";
 const USE_PROXY =
   !IS_SERVER && typeof window !== "undefined" && window.location.protocol === "https:";
 
-const DIRECT_BASE = "http://cosylab.iiitd.edu.in:6969";
+const DIRECT_BASE = "http://192.168.1.92:6969";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 function buildUrl(path: string, params?: Record<string, string>): string {

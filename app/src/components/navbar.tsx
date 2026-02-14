@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Flame, GitCompareArrows, BarChart3, Home, Moon, Sun, Beaker, Menu, X, ChefHat, Dna } from "lucide-react";
+import { Flame, GitCompareArrows, BarChart3, Home, Moon, Sun, Beaker, Menu, X, ChefHat, Dna, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,18 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="ml-2 h-6 w-px bg-border" />
+          <Link
+            href="/playground"
+            className={cn(
+              "ml-1 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-all",
+              pathname === "/playground"
+                ? "bg-gradient-to-r from-emerald-500 to-[#FF6F00] text-white shadow-md"
+                : "border border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+            )}
+          >
+            <FlaskConical className="h-4 w-4" />
+            Lab
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -69,6 +81,18 @@ export default function Navbar() {
 
         {/* Mobile controls */}
         <div className="flex items-center gap-1 md:hidden">
+          <Link
+            href="/playground"
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all",
+              pathname === "/playground"
+                ? "bg-gradient-to-r from-emerald-500 to-[#FF6F00] text-white shadow-md"
+                : "border border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+            )}
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            Lab
+          </Link>
           <Button
             variant="ghost"
             size="icon"
