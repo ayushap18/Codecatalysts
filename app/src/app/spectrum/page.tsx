@@ -52,7 +52,7 @@ function SpectrumContent() {
       const ps = calculatePhilosophyScore(data.ingredients);
       setRecipes((prev) => [
         ...prev,
-        { detail: data, fp, philosophy: ps },
+        { detail: data as RecipeDetail, fp, philosophy: ps },
       ]);
     } catch (err) {
       console.error(err);

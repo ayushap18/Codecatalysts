@@ -56,7 +56,7 @@ function TwinsContent() {
         setLoading(false);
         return;
       }
-      setSourceDetail(source);
+      setSourceDetail(source as RecipeDetail);
 
       const sourceFP = generateFlavorPrint(
         source.recipe.recipe_id,
@@ -100,7 +100,7 @@ function TwinsContent() {
 
               if (twinFP.totalMolecules === 0) continue;
 
-              const result = calculateTwinScore(source, sourceFP, twinDetail, twinFP);
+              const result = calculateTwinScore(source as RecipeDetail, sourceFP, twinDetail as RecipeDetail, twinFP);
               if (result.molecularSimilarity > 0.1) {
                 results.push(result);
               }

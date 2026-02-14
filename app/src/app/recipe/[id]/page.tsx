@@ -49,7 +49,11 @@ export default function RecipePage() {
       setLoading(true);
       try {
         const data = await getRecipeById(recipeId);
-        setDetail(data);
+        if (!data.recipe) {
+          setLoading(false);
+          return;
+        }
+        setDetail(data as RecipeDetail);
 
         if (data.recipe && data.ingredients) {
           const fp = generateFlavorPrint(
