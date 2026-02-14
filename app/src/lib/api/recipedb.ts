@@ -1,6 +1,6 @@
-const RECIPEDB_BASE =
-  process.env.NEXT_PUBLIC_RECIPEDB_BASE ||
-  "http://cosylab.iiitd.edu.in:6969/recipe2-api";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE || "http://cosylab.iiitd.edu.in:6969";
+const RECIPEDB_BASE = `${BASE_URL}/recipe2-api`;
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 

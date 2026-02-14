@@ -1,6 +1,6 @@
-const FLAVORDB_BASE =
-  process.env.NEXT_PUBLIC_FLAVORDB_BASE ||
-  "http://cosylab.iiitd.edu.in:6969/flavordb";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE || "http://cosylab.iiitd.edu.in:6969";
+const FLAVORDB_BASE = `${BASE_URL}/flavordb`;
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
