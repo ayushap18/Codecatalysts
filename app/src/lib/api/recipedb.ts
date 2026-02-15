@@ -80,38 +80,54 @@ function normalizeIngredient(raw: Record<string, unknown>) {
 
 // Raw fetch (no cache) — used internally
 async function _searchRecipesByTitle(title: string) {
-  const url = buildUrl("/recipe2-api/recipe-bytitle/recipeByTitle", { title });
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  const raw = data.data || data.payload?.data || [];
-  return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
+  try {
+    const url = buildUrl("/recipe2-api/recipe-bytitle/recipeByTitle", { title });
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    const raw = data.data || data.payload?.data || [];
+    return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function _getRecipeById(id: number | string) {
-  const url = buildUrl(`/recipe2-api/search-recipe/${id}`);
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  return {
-    recipe: data.recipe ? normalizeRecipe(data.recipe) : null,
-    ingredients: Array.isArray(data.ingredients)
-      ? data.ingredients.map(normalizeIngredient)
-      : [],
-  };
+  try {
+    const url = buildUrl(`/recipe2-api/search-recipe/${id}`);
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    return {
+      recipe: data.recipe ? normalizeRecipe(data.recipe) : null,
+      ingredients: Array.isArray(data.ingredients)
+        ? data.ingredients.map(normalizeIngredient)
+        : [],
+    };
+  } catch {
+    return { recipe: null, ingredients: [] };
+  }
 }
 
 async function _getRecipeInstructions(recipeId: number | string) {
-  const url = buildUrl(`/recipe2-api/instructions/${recipeId}`);
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  return data.steps || data.instructions || [];
+  try {
+    const url = buildUrl(`/recipe2-api/instructions/${recipeId}`);
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    return data.steps || data.instructions || [];
+  } catch {
+    return [];
+  }
 }
 
 async function _getRecipeOfDay() {
-  const url = buildUrl("/recipe2-api/recipe/recipeofday");
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  const raw = data.payload?.data || data.data;
-  return raw ? normalizeRecipe(raw) : null;
+  try {
+    const url = buildUrl("/recipe2-api/recipe/recipeofday");
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    const raw = data.payload?.data || data.data;
+    return raw ? normalizeRecipe(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function _getRecipesByCuisine(
@@ -123,34 +139,42 @@ async function _getRecipesByCuisine(
     limit?: number;
   }
 ) {
-  const params: Record<string, string> = {
-    page: String(opts?.page || 1),
-    page_size: String(opts?.limit || 10),
-  };
-  if (opts?.continent) params.continent = opts.continent;
-  if (opts?.subRegion) params.subRegion = opts.subRegion;
-  const url = buildUrl(
-    `/recipe2-api/recipes_cuisine/cuisine/${encodeURIComponent(region)}`,
-    params
-  );
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  const raw = data.data || data.payload?.data || [];
-  return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
+  try {
+    const params: Record<string, string> = {
+      page: String(opts?.page || 1),
+      page_size: String(opts?.limit || 10),
+    };
+    if (opts?.continent) params.continent = opts.continent;
+    if (opts?.subRegion) params.subRegion = opts.subRegion;
+    const url = buildUrl(
+      `/recipe2-api/recipes_cuisine/cuisine/${encodeURIComponent(region)}`,
+      params
+    );
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    const raw = data.data || data.payload?.data || [];
+    return Array.isArray(raw) ? raw.map(normalizeRecipe) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function _getRecipes(page = 1, limit = 10) {
-  const url = buildUrl("/recipe2-api/recipe/recipesinfo", {
-    page: String(page),
-    limit: String(limit),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  const data = await res.json();
-  const raw = data.payload?.data || data.data || [];
-  return {
-    recipes: Array.isArray(raw) ? raw.map(normalizeRecipe) : [],
-    pagination: data.payload?.pagination || data.pagination,
-  };
+  try {
+    const url = buildUrl("/recipe2-api/recipe/recipesinfo", {
+      page: String(page),
+      limit: String(limit),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    const raw = data.payload?.data || data.data || [];
+    return {
+      recipes: Array.isArray(raw) ? raw.map(normalizeRecipe) : [],
+      pagination: data.payload?.pagination || data.pagination,
+    };
+  } catch {
+    return { recipes: [], pagination: undefined };
+  }
 }
 
 // ── Cached public API ──────────────────────────────────────────

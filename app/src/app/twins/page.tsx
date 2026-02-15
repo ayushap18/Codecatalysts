@@ -18,6 +18,14 @@ import {
 } from "@/lib/algorithms/flavorprint";
 import type { TwinResult, RecipeDetail, Recipe } from "@/types";
 
+const SUGGESTED_RECIPES = [
+  { label: "Butter Chicken", query: "butter chicken" },
+  { label: "Pad Thai", query: "pad thai" },
+  { label: "Spaghetti Bolognese", query: "spaghetti bolognese" },
+  { label: "Sushi", query: "sushi" },
+  { label: "Tacos", query: "tacos" },
+];
+
 export default function TwinsPage() {
   return (
     <Suspense fallback={<div className="min-h-screen"><Navbar /><div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div></div>}>
@@ -188,9 +196,28 @@ function TwinsContent() {
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
+    setLoading(true);
     const results = await searchRecipesByTitle(query);
     const first = Array.isArray(results) ? results[0] : null;
-    if (first) findTwins(first.recipe_id);
+    if (first) {
+      findTwins(first.recipe_id);
+    } else {
+      setStatus("No recipe found. Try a different search.");
+      setLoading(false);
+    }
+  }
+
+  async function handleSuggestionClick(q: string) {
+    setQuery(q);
+    setLoading(true);
+    const results = await searchRecipesByTitle(q);
+    const first = Array.isArray(results) ? results[0] : null;
+    if (first) {
+      findTwins(first.recipe_id);
+    } else {
+      setStatus("No recipe found for this suggestion.");
+      setLoading(false);
+    }
   }
 
   return (
@@ -239,6 +266,26 @@ function TwinsContent() {
               Find Twins
             </Button>
           </motion.form>
+        )}
+
+        {/* Quick suggestions */}
+        {!initialId && !loading && twins.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mx-auto mb-8 flex max-w-xl flex-wrap justify-center gap-2"
+          >
+            {SUGGESTED_RECIPES.map((s) => (
+              <button
+                key={s.query}
+                onClick={() => handleSuggestionClick(s.query)}
+                className="rounded-full border border-border px-4 py-1.5 text-sm text-muted-foreground transition-colors hover:border-[#4CAF50]/50 hover:bg-[#4CAF50]/5 hover:text-[#4CAF50]"
+              >
+                {s.label}
+              </button>
+            ))}
+          </motion.div>
         )}
 
         {loading && (

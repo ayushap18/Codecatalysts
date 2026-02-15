@@ -196,7 +196,22 @@ export function getMoleculesForIngredient(ingredientName: string): FlavorMolecul
 }
 
 // Runtime cache for FlavorDB lookups (avoids repeated API calls within session)
-const _runtimeMoleculeCache: Record<string, FlavorMolecule[]> = {};
+const RUNTIME_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const _runtimeMoleculeCache: Record<string, { molecules: FlavorMolecule[]; cachedAt: number }> = {};
+
+function getRuntimeCache(key: string): FlavorMolecule[] | null {
+  const entry = _runtimeMoleculeCache[key];
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > RUNTIME_CACHE_TTL) {
+    delete _runtimeMoleculeCache[key];
+    return null;
+  }
+  return entry.molecules;
+}
+
+function setRuntimeCache(key: string, molecules: FlavorMolecule[]): void {
+  _runtimeMoleculeCache[key] = { molecules, cachedAt: Date.now() };
+}
 
 /** Async molecule lookup: tries static cache first, then FlavorDB API */
 export async function getMoleculesForIngredientAsync(ingredientName: string): Promise<FlavorMolecule[]> {
@@ -207,15 +222,16 @@ export async function getMoleculesForIngredientAsync(ingredientName: string): Pr
   // Skip known empty ingredients
   if (INGREDIENT_MOLECULES[lower]?.length === 0) return [];
 
-  // 2. Runtime cache
-  if (_runtimeMoleculeCache[lower]) return _runtimeMoleculeCache[lower];
+  // 2. Runtime cache (with TTL)
+  const cached = getRuntimeCache(lower);
+  if (cached !== null) return cached;
 
   // 3. FlavorDB API (cached in localStorage for 24h)
   try {
     const result = await getEntitiesByName(lower);
     const entities = result?.content || [];
     if (entities.length === 0) {
-      _runtimeMoleculeCache[lower] = [];
+      setRuntimeCache(lower, []);
       return [];
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,10 +244,10 @@ export async function getMoleculesForIngredientAsync(ingredientName: string): Pr
         pubchem_id: m.pubchem_id || m.pubchemId,
       })
     );
-    _runtimeMoleculeCache[lower] = molecules;
+    setRuntimeCache(lower, molecules);
     return molecules;
   } catch {
-    _runtimeMoleculeCache[lower] = [];
+    setRuntimeCache(lower, []);
     return [];
   }
 }

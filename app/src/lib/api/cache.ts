@@ -106,6 +106,18 @@ export function clearCache(): void {
   keys.forEach((k) => localStorage.removeItem(k));
 }
 
+/** Invalidate cache entries matching a prefix (e.g. "fdb:entity" or "search:") */
+export function invalidateCache(prefix: string): void {
+  if (typeof window === "undefined") return;
+  const fullPrefix = CACHE_PREFIX + prefix;
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(fullPrefix)) keys.push(key);
+  }
+  keys.forEach((k) => localStorage.removeItem(k));
+}
+
 /** Get cache stats */
 export function getCacheStats(): { entries: number; sizeKB: number } {
   if (typeof window === "undefined") return { entries: 0, sizeKB: 0 };
@@ -127,7 +139,7 @@ export function getCacheStats(): { entries: number; sizeKB: number } {
 const HISTORY_KEY = "fp_history";
 
 export interface HistoryEntry {
-  type: "search" | "recipe" | "explore" | "twins" | "spectrum";
+  type: "search" | "recipe" | "explore" | "twins" | "spectrum" | "builder" | "cuisine";
   title: string;
   subtitle?: string;
   path: string;

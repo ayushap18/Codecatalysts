@@ -17,6 +17,14 @@ import { addToHistory } from "@/lib/api/cache";
 import { generateFlavorPrintAsync, calculatePhilosophyScoreAsync } from "@/lib/algorithms/flavorprint";
 import type { RecipeDetail, FlavorPrint, PhilosophyScore } from "@/types";
 
+const SUGGESTED_RECIPES = [
+  { label: "Biryani", query: "biryani" },
+  { label: "Ramen", query: "ramen" },
+  { label: "Pizza", query: "pizza" },
+  { label: "Tacos", query: "tacos" },
+  { label: "Tom Yum", query: "tom yum" },
+];
+
 export default function SpectrumPage() {
   return (
     <Suspense fallback={<div className="min-h-screen"><Navbar /><div className="flex justify-center py-20"><Loader2 className="h-5 w-5 animate-spin" /></div></div>}>
@@ -77,10 +85,20 @@ function SpectrumContent() {
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
+    setLoading(true);
     const results = await searchRecipesByTitle(query);
     const first = Array.isArray(results) ? results[0] : null;
     if (first) analyzeRecipe(first.recipe_id);
+    else setLoading(false);
     setQuery("");
+  }
+
+  async function handleSuggestionClick(q: string) {
+    setLoading(true);
+    const results = await searchRecipesByTitle(q);
+    const first = Array.isArray(results) ? results[0] : null;
+    if (first) analyzeRecipe(first.recipe_id);
+    else setLoading(false);
   }
 
   return (
@@ -128,6 +146,26 @@ function SpectrumContent() {
             Analyze
           </Button>
         </motion.form>
+
+        {/* Quick suggestions */}
+        {!loading && recipes.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mx-auto mb-8 flex max-w-xl flex-wrap justify-center gap-2"
+          >
+            {SUGGESTED_RECIPES.map((s) => (
+              <button
+                key={s.query}
+                onClick={() => handleSuggestionClick(s.query)}
+                className="rounded-full border border-border px-4 py-1.5 text-sm text-muted-foreground transition-colors hover:border-[#2196F3]/50 hover:bg-[#2196F3]/5 hover:text-[#2196F3]"
+              >
+                {s.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
 
         {loading && (
           <div className="flex items-center justify-center gap-2 py-8">

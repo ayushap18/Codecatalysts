@@ -27,6 +27,7 @@ import {
   classifyFlavor,
 } from "@/lib/algorithms/flavorprint";
 import { getFoodPairings } from "@/lib/api/flavordb";
+import { addToHistory } from "@/lib/api/cache";
 import type { FlavorPrint, PhilosophyScore, RecipeIngredient } from "@/types";
 
 interface Suggestion {
@@ -74,6 +75,14 @@ export default function BuilderPage() {
         setFlavorprint(fp);
         setPhilosophy(ps);
         setLoading(false);
+        if (fp.totalMolecules > 0) {
+          addToHistory({
+            type: "builder",
+            title: `Built: ${ingredients.join(", ")}`,
+            subtitle: `${fp.totalMolecules} molecules, ${fp.categories.filter((c) => c.count > 0).length} categories`,
+            path: `/builder?ing=${encodeURIComponent(ingredients.join(","))}`,
+          });
+        }
       }
     };
     update();

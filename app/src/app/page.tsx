@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
   Database,
+  Dna,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -563,6 +564,8 @@ export default function HomePage() {
                               {entry.type === "twins" && <GitCompareArrows className="h-5 w-5 text-[#4CAF50]" />}
                               {entry.type === "spectrum" && <BarChart3 className="h-5 w-5 text-[#2196F3]" />}
                               {entry.type === "explore" && <Beaker className="h-5 w-5 text-[#9C27B0]" />}
+                              {entry.type === "builder" && <ChefHat className="h-5 w-5 text-[#E91E63]" />}
+                              {entry.type === "cuisine" && <Dna className="h-5 w-5 text-[#009688]" />}
                             </div>
                           )}
                           <div className="min-w-0 flex-1">

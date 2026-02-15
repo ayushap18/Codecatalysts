@@ -10,7 +10,16 @@ import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { computeCuisineDNA } from "@/lib/algorithms/cuisine-dna";
 import { FLAVOR_CATEGORIES } from "@/lib/algorithms/flavorprint";
+import { addToHistory } from "@/lib/api/cache";
 import type { CuisineDNA } from "@/lib/algorithms/cuisine-dna";
+
+const PRESET_COMBOS = [
+  { label: "Indian vs Japanese", cuisines: ["Indian", "Japanese"] },
+  { label: "Italian vs Mexican vs Thai", cuisines: ["Italian", "Mexican", "Thai"] },
+  { label: "French vs Korean", cuisines: ["French", "Korean"] },
+  { label: "Ethiopian vs Chinese", cuisines: ["Ethiopian", "Chinese"] },
+  { label: "American vs Indian vs Japanese", cuisines: ["American", "Indian", "Japanese"] },
+];
 
 const CUISINES = [
   { name: "Indian", color: "#FF6F00" },
@@ -39,6 +48,40 @@ export default function CuisinePage() {
     });
   }
 
+  async function handlePresetClick(cuisines: string[]) {
+    setSelected(cuisines);
+    setLoading(true);
+    setResults([]);
+
+    const dnaResults: CuisineDNA[] = [];
+    for (const cuisineName of cuisines) {
+      const cuisine = CUISINES.find((c) => c.name === cuisineName);
+      setStatus(`Analyzing ${cuisineName}...`);
+      try {
+        const dna = await computeCuisineDNA(
+          cuisineName,
+          cuisine?.color || "#607D8B",
+          5
+        );
+        dnaResults.push(dna);
+      } catch {
+        // Skip failed cuisines
+      }
+    }
+
+    setResults(dnaResults);
+    setStatus("");
+    setLoading(false);
+    if (dnaResults.length > 0) {
+      addToHistory({
+        type: "cuisine",
+        title: `Cuisine DNA: ${dnaResults.map((r) => r.name).join(" vs ")}`,
+        subtitle: `${dnaResults.length} cuisine${dnaResults.length !== 1 ? "s" : ""} analyzed`,
+        path: `/cuisine?c=${encodeURIComponent(cuisines.join(","))}`,
+      });
+    }
+  }
+
   async function analyze() {
     if (selected.length === 0) return;
     setLoading(true);
@@ -63,6 +106,14 @@ export default function CuisinePage() {
     setResults(dnaResults);
     setStatus("");
     setLoading(false);
+    if (dnaResults.length > 0) {
+      addToHistory({
+        type: "cuisine",
+        title: `Cuisine DNA: ${dnaResults.map((r) => r.name).join(" vs ")}`,
+        subtitle: `${dnaResults.length} cuisine${dnaResults.length !== 1 ? "s" : ""} analyzed`,
+        path: `/cuisine?c=${encodeURIComponent(selected.join(","))}`,
+      });
+    }
   }
 
   // Collect all categories present in results for chart
@@ -156,6 +207,29 @@ export default function CuisinePage() {
             </Button>
           </div>
         </motion.div>
+
+        {/* Quick presets */}
+        {!loading && results.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mx-auto mb-8 max-w-xl text-center"
+          >
+            <p className="mb-3 text-xs text-muted-foreground">Or try a preset:</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {PRESET_COMBOS.map((combo) => (
+                <button
+                  key={combo.label}
+                  onClick={() => handlePresetClick(combo.cuisines)}
+                  className="rounded-full border border-border px-4 py-1.5 text-sm text-muted-foreground transition-colors hover:border-[#009688]/50 hover:bg-[#009688]/5 hover:text-[#009688]"
+                >
+                  {combo.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Loading */}
         {loading && (

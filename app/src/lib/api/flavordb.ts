@@ -33,99 +33,135 @@ function authHeaders(): Record<string, string> {
 // ── Raw fetchers (no cache) ────────────────────────────────────
 
 async function _getEntitiesByName(name: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/entities/by-entity-alias-readable", {
-    entity_alias_readable: name,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/entities/by-entity-alias-readable", {
+      entity_alias_readable: name,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getEntitiesByCategory(name: string, category: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/entities/by-name-and-category", {
-    name,
-    category,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/entities/by-name-and-category", {
+      name,
+      category,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getEntitiesByNaturalSource(source: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/entities/by-natural-source", {
-    naturalSource: source,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/entities/by-natural-source", {
+      naturalSource: source,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getFoodPairings(ingredient: string) {
-  const url = buildUrl("/flavordb/food/by-alias", { food_pair: ingredient });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/food/by-alias", { food_pair: ingredient });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 async function _getMoleculesByFlavorProfile(flavor: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/molecules_data/by-flavorProfile", {
-    flavorProfile: flavor,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/molecules_data/by-flavorProfile", {
+      flavorProfile: flavor,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getMoleculesByCommonName(name: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/molecules_data/by-commonName", {
-    commonName: name,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/molecules_data/by-commonName", {
+      commonName: name,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getMoleculesByType(type: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/molecules_data/filter-by-type", {
-    type,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/molecules_data/filter-by-type", {
+      type,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getPropertiesByDescription(description: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/properties/by-description", {
-    description,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/properties/by-description", {
+      description,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 async function _getPropertiesByTasteThreshold(values: string, page = 0, size = 20) {
-  const url = buildUrl("/flavordb/properties/taste-threshold", {
-    values,
-    page: String(page),
-    size: String(size),
-  });
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) return { content: [] };
-  return res.json();
+  try {
+    const url = buildUrl("/flavordb/properties/taste-threshold", {
+      values,
+      page: String(page),
+      size: String(size),
+    });
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return { content: [] };
+    return res.json();
+  } catch {
+    return { content: [] };
+  }
 }
 
 // ── Cached public API ──────────────────────────────────────────

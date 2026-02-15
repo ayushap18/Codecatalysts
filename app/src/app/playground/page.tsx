@@ -370,60 +370,534 @@ function FormulaLibrary({ onLoadExperiment }: { onLoadExperiment: (exp: LabExper
   );
 }
 
-// ── Live Experiment (1 API call) ─────────────────────────────
-function LiveExperiment() {
-  const [query, setQuery] = useState(""); const [loading, setLoading] = useState(false); const [error, setError] = useState("");
-  const [result, setResult] = useState<{ name: string; molecules: FlavorMolecule[]; categories: { name: string; color: string; count: number }[] } | null>(null);
+// ── Live Experiment ──────────────────────────────────────────
 
-  const handleSearch = useCallback(async () => {
-    const term = query.trim().toLowerCase(); if (!term) return;
-    setLoading(true); setError(""); setResult(null);
+const LIVE_PICKS: { category: string; icon: string; items: string[] }[] = [
+  { category: "Fruits", icon: "🍎", items: ["mango", "apple", "strawberry", "lemon", "banana", "grape", "pineapple", "orange"] },
+  { category: "Herbs", icon: "🌿", items: ["thyme", "basil", "rosemary", "oregano", "mint", "cilantro", "parsley", "dill"] },
+  { category: "Spices", icon: "🌶", items: ["saffron", "cinnamon", "ginger", "turmeric", "cumin", "cardamom", "clove", "pepper"] },
+  { category: "Proteins", icon: "🥩", items: ["beef", "chicken", "salmon", "shrimp", "egg", "lamb", "pork", "tuna"] },
+  { category: "Essentials", icon: "🧪", items: ["vanilla", "coffee", "mushroom", "honey", "cocoa", "garlic", "onion", "butter"] },
+];
+
+interface LiveResult {
+  name: string;
+  molecules: FlavorMolecule[];
+  categories: { name: string; color: string; count: number; mols: string[] }[];
+  source: "api" | "static";
+  category?: string;
+  entityId?: number;
+}
+
+function LiveExperiment() {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [scanPhase, setScanPhase] = useState("");
+  const [results, setResults] = useState<LiveResult[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(true);
+
+  const handleSearch = useCallback(async (searchTerm?: string) => {
+    const term = (searchTerm || query).trim().toLowerCase();
+    if (!term) return;
+    // Skip duplicates
+    const existing = results.findIndex((r) => r.name.toLowerCase() === term);
+    if (existing !== -1) { setActiveIdx(existing); return; }
+    setLoading(true);
+    setError("");
+    setScanPhase("Connecting to FlavorDB...");
     try {
-      const data = await getEntitiesByName(term); const entities = data?.content || [];
-      if (entities.length === 0) { setError(`No FlavorDB entry found for "${term}".`); setLoading(false); return; }
+      setScanPhase("Querying molecular database...");
+      const data = await getEntitiesByName(term);
+      const entities = data?.content || [];
+
+      // Try static molecule library first (works offline, no API credit)
+      const staticMols = getMoleculesForIngredient(term);
+
+      if (entities.length === 0 && staticMols.length === 0) {
+        setError(`No FlavorDB entry for "${term}". Try a common ingredient name (e.g. garlic, basil, beef).`);
+        setLoading(false);
+        setScanPhase("");
+        return;
+      }
+
+      setScanPhase("Extracting flavor molecules...");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const entity = entities[0] as any;
+      const entity = entities.length > 0 ? (entities[0] as any) : null;
+
+      // BUG: The /entities/by-entity-alias-readable endpoint returns entity metadata
+      // WITHOUT molecules (entity.molecules is missing). See ISSUES.md for full report.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mols: FlavorMolecule[] = (entity.molecules || []).map((m: any) => ({ common_name: m.common_name || m.commonName || m.common_Name || "Unknown", flavor_profile: m.flavor_profile || m.flavorProfile || m.flavor_Profile || "other", pubchem_id: m.pubchem_id || m.pubchemId }));
+      const apiMols = (entity?.molecules || []) as any[];
+      let mols: FlavorMolecule[];
+      let source: "api" | "static";
+
+      if (apiMols.length > 0) {
+        // Use API molecules if available
+        source = "api";
+        mols = apiMols.map((m: Record<string, unknown>) => ({
+          common_name: (m.common_name || m.commonName || "Unknown") as string,
+          flavor_profile: (m.flavor_profile || m.flavorProfile || "other") as string,
+          pubchem_id: (m.pubchem_id || m.pubchemId) as number | undefined,
+        }));
+      } else {
+        // Fallback to static FlavorDB molecule library
+        source = "static";
+        mols = staticMols;
+      }
+
+      setScanPhase("Classifying flavor profiles...");
       const catMap: Record<string, string[]> = {};
-      for (const mol of mols) { mol.flavor_profile.split(",").map((s) => s.trim()).forEach((p) => { const cat = classifyFlavor(p); if (!catMap[cat]) catMap[cat] = []; if (!catMap[cat].includes(mol.common_name)) catMap[cat].push(mol.common_name); }); }
-      const categories = Object.entries(catMap).map(([n, ms]) => ({ name: n, color: FLAVOR_CATEGORIES[n] || "#90A4AE", count: ms.length })).sort((a, b) => b.count - a.count);
-      setResult({ name: entity.entity_alias_readable || term, molecules: mols, categories });
-    } catch { setError("API request failed."); }
+      for (const mol of mols) {
+        // FlavorDB uses @ as delimiter (e.g. "sweet@citrus@floral"), also support comma
+        mol.flavor_profile.split(/[@,]/).map((s) => s.trim()).filter(Boolean).forEach((p) => {
+          const cat = classifyFlavor(p);
+          if (!catMap[cat]) catMap[cat] = [];
+          if (!catMap[cat].includes(mol.common_name)) catMap[cat].push(mol.common_name);
+        });
+      }
+      const categories = Object.entries(catMap)
+        .map(([n, ms]) => ({ name: n, color: FLAVOR_CATEGORIES[n] || "#90A4AE", count: ms.length, mols: ms }))
+        .sort((a, b) => b.count - a.count);
+      const analyzed: LiveResult = {
+        name: entity?.entity_alias_readable || term,
+        molecules: mols,
+        categories,
+        source,
+        category: entity?.category_readable,
+        entityId: entity?.entity_id,
+      };
+      setResults((prev) => { const next = [...prev, analyzed]; setActiveIdx(next.length - 1); return next; });
+      setQuery("");
+    } catch {
+      setError("API request failed. Check network connection or try again.");
+    }
     setLoading(false);
-  }, [query]);
+    setScanPhase("");
+  }, [query, results]);
+
+  const active = results[activeIdx] || null;
+
+  // Comparison: between active and previous result
+  const comparison = useMemo(() => {
+    if (results.length < 2 || !active) return null;
+    const otherIdx = activeIdx > 0 ? activeIdx - 1 : 1;
+    const other = results[otherIdx];
+    if (!other) return null;
+    const aMols = active.molecules.map((m) => m.common_name);
+    const bMols = other.molecules.map((m) => m.common_name);
+    const shared = aMols.filter((m) => bMols.includes(m));
+    const jaccard = jaccardSimilarity(aMols, bMols);
+    return { a: active.name, b: other.name, shared, jaccard, aTotal: aMols.length, bTotal: bMols.length };
+  }, [results, activeIdx, active]);
+
+  const moleculesColored = useMemo(() =>
+    active ? active.molecules.map((m) => {
+      const cat = classifyFlavor(m.flavor_profile);
+      return { ...m, category: cat, color: FLAVOR_CATEGORIES[cat] || "#90A4AE" };
+    }) : [], [active]);
+
+  const totalAnalyzed = results.reduce((s, r) => s + r.molecules.length, 0);
 
   return (
     <div className="space-y-6">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="font-[family-name:var(--font-playfair)] text-xl font-bold text-white">Live Molecular <span className="bg-gradient-to-r from-[#FF6F00] to-[#E91E63] bg-clip-text text-transparent">Analysis</span></h2>
-        <p className="mt-2 text-sm text-white/40">Search any ingredient beyond our static library. Uses 1 API call per unique search (cached 24h).</p>
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-6">
+        {/* Ambient particles */}
+        {[...Array(8)].map((_, i) => (
+          <motion.div key={`lp-${i}`} className="absolute rounded-full"
+            style={{ width: 3 + Math.random() * 6, height: 3 + Math.random() * 6, backgroundColor: Object.values(FLAVOR_CATEGORIES)[i % Object.values(FLAVOR_CATEGORIES).length], left: `${10 + Math.random() * 80}%`, top: `${10 + Math.random() * 80}%` }}
+            animate={{ y: [0, -30, 0], opacity: [0.2, 0.5, 0.2] }}
+            transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, delay: i * 0.5 }} />
+        ))}
+        <div className="relative z-10 text-center">
+          <h2 className="font-[family-name:var(--font-playfair)] text-xl font-bold text-white">
+            Live Molecular{" "}
+            <span className="bg-gradient-to-r from-[#FF6F00] to-[#E91E63] bg-clip-text text-transparent">Analysis</span>
+          </h2>
+          <p className="mt-2 text-sm text-white/40">
+            Search any ingredient beyond our static library. Each search uses 1 API call (cached 24h).
+            <br />
+            <span className="text-white/25">Analyze multiple ingredients to compare molecular profiles.</span>
+          </p>
+          {results.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 flex justify-center gap-4">
+              <div className="rounded-lg bg-emerald-500/10 px-3 py-1.5">
+                <span className="text-sm font-bold text-emerald-400">{results.length}</span>
+                <span className="ml-1 text-[10px] text-white/30">Analyzed</span>
+              </div>
+              <div className="rounded-lg bg-[#FF6F00]/10 px-3 py-1.5">
+                <span className="text-sm font-bold text-[#FF6F00]">{totalAnalyzed}</span>
+                <span className="ml-1 text-[10px] text-white/30">Molecules</span>
+              </div>
+              <div className="rounded-lg bg-[#E91E63]/10 px-3 py-1.5">
+                <span className="text-sm font-bold text-[#E91E63]">{new Set(results.flatMap((r) => r.categories.map((c) => c.name))).size}</span>
+                <span className="ml-1 text-[10px] text-white/30">Categories</span>
+              </div>
+            </motion.div>
+          )}
+        </div>
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="mx-auto flex max-w-lg gap-2">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-          <input type="text" placeholder="e.g. mango, thyme, beef, saffron..." value={query} onChange={(e) => setQuery(e.target.value)}
-            className="h-12 w-full rounded-lg border border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/25 focus:border-[#FF6F00]/50 focus:outline-none" />
+
+      {/* Search bar */}
+      <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="mx-auto flex max-w-2xl gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+          <input type="text" placeholder="Type any ingredient name..." value={query} onChange={(e) => setQuery(e.target.value)}
+            className="h-12 w-full rounded-lg border border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/25 focus:border-[#FF6F00]/50 focus:outline-none focus:ring-1 focus:ring-[#FF6F00]/20" />
         </div>
         <Button type="submit" disabled={loading || !query.trim()} className="h-12 bg-[#FF6F00] px-6 text-white hover:bg-[#E65100] disabled:opacity-40">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="mr-1 h-4 w-4" />Analyze</>}
         </Button>
       </form>
-      <div className="mx-auto flex max-w-lg flex-wrap justify-center gap-2">{["mango", "thyme", "beef", "saffron", "vanilla", "coffee", "mushroom", "honey"].map((s) => (<button key={s} onClick={() => setQuery(s)} className="rounded-full border border-white/10 px-3 py-1 text-xs capitalize text-white/40 hover:border-[#FF6F00]/30 hover:text-white/60">{s}</button>))}</div>
-      {error && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto max-w-lg rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-center text-sm text-red-400">{error}</motion.div>}
-      {result && (<motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-3xl">
-        <div className="rounded-xl border border-[#FF6F00]/30 bg-white/[0.03] p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-[family-name:var(--font-playfair)] text-lg font-bold capitalize text-white">{result.name}</h3>
-            <Badge variant="secondary" className="border-0 bg-emerald-500/20 text-emerald-400">{result.molecules.length} molecules</Badge>
+
+      {/* Main layout */}
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        {/* LEFT: Ingredient Palette */}
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 lg:max-h-[calc(100vh-280px)] lg:overflow-y-auto">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><Beaker className="h-4 w-4 text-emerald-400" />Quick Picks</h3>
+            <button onClick={() => setPickerOpen(!pickerOpen)} className="text-[10px] text-white/30 hover:text-white/60">
+              {pickerOpen ? "Collapse" : "Expand"}
+            </button>
           </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div><h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">Flavor Categories</h4><div className="space-y-2">{result.categories.map((cat) => { const mx = Math.max(...result.categories.map((c) => c.count)); return (<div key={cat.name} className="flex items-center gap-2"><div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: cat.color }} /><span className="w-14 shrink-0 text-xs capitalize text-white/60">{cat.name}</span><div className="flex-1"><div className="h-2 w-full rounded-full bg-white/10"><motion.div className="h-full rounded-full" style={{ backgroundColor: cat.color }} initial={{ width: 0 }} animate={{ width: `${(cat.count / mx) * 100}%` }} transition={{ duration: 0.5 }} /></div></div><span className="w-5 shrink-0 text-right text-xs text-white/40">{cat.count}</span></div>); })}</div></div>
-            <div><h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">Molecular Composition</h4><div className="max-h-[300px] space-y-1 overflow-y-auto pr-2">{result.molecules.map((mol, i) => { const cat = classifyFlavor(mol.flavor_profile); const color = FLAVOR_CATEGORIES[cat] || "#90A4AE"; return (<motion.div key={mol.common_name + i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2"><div className="flex items-center gap-2"><div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} /><span className="font-mono text-xs text-white/70">{mol.common_name}</span></div><span className="text-[10px] text-white/30">{mol.flavor_profile}</span></motion.div>); })}</div></div>
-          </div>
-          <div className="mt-4 rounded-lg bg-white/5 p-3 text-center"><p className="text-[10px] text-white/30">FlavorDB (CoSyLab, IIIT Delhi) — cached 24h</p></div>
+          <AnimatePresence>
+            {pickerOpen && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="space-y-4 overflow-hidden">
+                {LIVE_PICKS.map((group) => (
+                  <div key={group.category}>
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                      <span>{group.icon}</span>{group.category}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {group.items.map((name) => {
+                        const isAnalyzed = results.some((r) => r.name.toLowerCase() === name);
+                        return (
+                          <motion.button key={name} onClick={() => { setQuery(name); handleSearch(name); }}
+                            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                            disabled={loading}
+                            className={cn(
+                              "rounded-lg border px-2.5 py-2 text-left text-xs font-medium capitalize transition-all disabled:opacity-40",
+                              isAnalyzed
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                                : "border-white/10 text-white/60 hover:border-[#FF6F00]/40 hover:bg-white/5"
+                            )}>
+                            {name}
+                            {isAnalyzed && <Atom className="ml-1 inline h-3 w-3" />}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </motion.div>)}
-      {!result && !error && !loading && <div className="py-8 text-center"><TestTubes className="mx-auto h-12 w-12 text-white/10" /><p className="mt-3 text-sm text-white/30">Search any ingredient for its molecular profile</p></div>}
+
+        {/* RIGHT: Results area */}
+        <div className="space-y-4">
+          {/* Scanner animation */}
+          {loading && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-[#FF6F00]/20 bg-white/[0.03] p-8">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative">
+                  <motion.div className="h-16 w-16 rounded-full border-2 border-[#FF6F00]/30"
+                    animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}>
+                    <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#FF6F00]" />
+                  </motion.div>
+                  <motion.div className="absolute inset-2 rounded-full border border-emerald-500/20"
+                    animate={{ rotate: -360 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }}>
+                    <div className="absolute bottom-0 left-1/2 h-1.5 w-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-emerald-400" />
+                  </motion.div>
+                  <TestTubes className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 text-white/40" />
+                </div>
+                <div className="text-center">
+                  <p className="font-mono text-xs text-[#FF6F00]">{scanPhase}</p>
+                  <motion.div className="mx-auto mt-3 h-1 w-48 overflow-hidden rounded-full bg-white/10">
+                    <motion.div className="h-full rounded-full bg-gradient-to-r from-[#FF6F00] to-emerald-500"
+                      animate={{ width: ["0%", "70%", "100%"] }}
+                      transition={{ duration: 2, repeat: Infinity }} />
+                  </motion.div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+                  <X className="h-4 w-4 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-red-400">Analysis Failed</p>
+                  <p className="mt-1 text-xs text-red-400/60">{error}</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Result tabs */}
+          {results.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {results.map((r, i) => (
+                <motion.button key={r.name} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                  onClick={() => setActiveIdx(i)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all",
+                    activeIdx === i
+                      ? "border-[#FF6F00]/50 bg-[#FF6F00]/15 text-white"
+                      : "border-white/10 text-white/50 hover:border-white/20 hover:bg-white/5"
+                  )}>
+                  <Atom className="h-3 w-3" />
+                  <span className="capitalize">{r.name}</span>
+                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-white/30">{r.molecules.length}</span>
+                </motion.button>
+              ))}
+              <button onClick={() => { setResults([]); setActiveIdx(0); }}
+                className="shrink-0 rounded-lg border border-white/10 px-2.5 py-2 text-[10px] text-white/30 hover:border-red-500/30 hover:text-red-400">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
+          {/* Active result card */}
+          {active && !loading && (
+            <motion.div key={active.name} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-[#FF6F00]/30 bg-white/[0.03] p-6">
+              {/* Header */}
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-[family-name:var(--font-playfair)] text-lg font-bold capitalize text-white">{active.name}</h3>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <p className="text-[10px] text-white/30">FlavorDB molecular profile</p>
+                    {active.category && (
+                      <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-white/30">{active.category}</span>
+                    )}
+                    <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium",
+                      active.source === "api" ? "bg-emerald-500/20 text-emerald-400" : "bg-purple-500/20 text-purple-400"
+                    )}>
+                      {active.source === "api" ? "Live API" : "Static Library"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="secondary" className="border-0 bg-emerald-500/20 text-emerald-400">
+                    <Atom className="mr-1 h-3 w-3" />{active.molecules.length} molecules
+                  </Badge>
+                  <Badge variant="secondary" className="border-0 bg-[#FF6F00]/20 text-[#FF6F00]">
+                    {active.categories.length} categories
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Stats boxes */}
+              <div className="mb-6 grid grid-cols-4 gap-3">
+                <div className="rounded-lg bg-white/5 p-3 text-center">
+                  <p className="text-lg font-bold text-emerald-400">{active.molecules.length}</p>
+                  <p className="text-[9px] text-white/30">Total Molecules</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-3 text-center">
+                  <p className="text-lg font-bold text-[#FF6F00]">{active.categories.length}</p>
+                  <p className="text-[9px] text-white/30">Flavor Types</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-3 text-center">
+                  <p className="text-lg font-bold text-[#E91E63]">{active.categories[0]?.count || 0}</p>
+                  <p className="text-[9px] text-white/30">Dominant Count</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-3 text-center">
+                  <p className="text-lg font-bold capitalize text-[#9C27B0]">{active.categories[0]?.name || "—"}</p>
+                  <p className="text-[9px] text-white/30">Primary Flavor</p>
+                </div>
+              </div>
+
+              {/* Content grid */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Flavor categories */}
+                <div>
+                  <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                    <Sparkles className="h-3 w-3 text-[#FF6F00]" />Flavor Categories
+                  </h4>
+                  <div className="space-y-2">
+                    {active.categories.map((cat) => {
+                      const mx = Math.max(...active.categories.map((c) => c.count));
+                      return (
+                        <div key={cat.name} className="group flex items-center gap-2">
+                          <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: cat.color }} />
+                          <span className="w-14 shrink-0 text-xs capitalize text-white/60">{cat.name}</span>
+                          <div className="flex-1">
+                            <div className="h-2.5 w-full rounded-full bg-white/10">
+                              <motion.div className="h-full rounded-full" style={{ backgroundColor: cat.color }}
+                                initial={{ width: 0 }} animate={{ width: `${(cat.count / mx) * 100}%` }} transition={{ duration: 0.6 }} />
+                            </div>
+                          </div>
+                          <span className="w-5 shrink-0 text-right text-xs font-medium text-white/40">{cat.count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Dominant badge */}
+                  {active.categories.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.03] p-3 text-center">
+                      <p className="text-[10px] uppercase tracking-wider text-white/30">Dominant Profile</p>
+                      <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
+                        {active.categories.slice(0, 3).map((c) => (
+                          <span key={c.name} className="rounded-full px-2.5 py-1 text-[10px] font-medium capitalize text-white"
+                            style={{ backgroundColor: c.color + "40" }}>{c.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Molecular composition */}
+                <div>
+                  <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                    <Atom className="h-3 w-3 text-emerald-400" />Molecular Composition
+                  </h4>
+                  <div className="max-h-[400px] space-y-1 overflow-y-auto pr-2">
+                    {active.molecules.map((mol, i) => {
+                      const cat = classifyFlavor(mol.flavor_profile);
+                      const color = FLAVOR_CATEGORIES[cat] || "#90A4AE";
+                      return (
+                        <motion.div key={mol.common_name + i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.015 }}
+                          className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 transition-colors hover:bg-white/10">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="font-mono text-xs text-white/70">{mol.common_name}</span>
+                          </div>
+                          <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] capitalize text-white/25">{cat}</span>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-4 rounded-lg bg-white/5 p-3 text-center">
+                <p className="text-[10px] text-white/30">
+                  {active.source === "api"
+                    ? "FlavorDB API (CoSyLab, IIIT Delhi) — cached 24h — 1 API credit per unique search"
+                    : "Static FlavorDB library — 0 API credits — API entity endpoint does not return molecules (see ISSUES.md)"}
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Comparison panel */}
+          {comparison && !loading && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+              className="rounded-xl border border-emerald-500/20 bg-white/[0.03] p-5">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                <Zap className="h-4 w-4 text-[#FF6F00]" />
+                Molecular Comparison
+              </h3>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-lg bg-[#FF6F00]/15 px-2.5 py-1 text-xs font-medium capitalize text-[#FF6F00]">{comparison.a}</span>
+                  <span className="text-[10px] text-white/20">vs</span>
+                  <span className="rounded-lg bg-emerald-500/15 px-2.5 py-1 text-xs font-medium capitalize text-emerald-400">{comparison.b}</span>
+                </div>
+                <Badge variant="secondary" className={cn("border-0",
+                  comparison.jaccard > 0.3 ? "bg-green-500/20 text-green-400"
+                  : comparison.jaccard > 0.1 ? "bg-yellow-500/20 text-yellow-400"
+                  : "bg-red-500/20 text-red-400"
+                )}>
+                  {Math.round(comparison.jaccard * 100)}% similarity
+                </Badge>
+              </div>
+              {/* Similarity bar */}
+              <div className="mb-4">
+                <div className="flex justify-between text-[10px] text-white/30">
+                  <span>0% (No overlap)</span>
+                  <span>100% (Identical)</span>
+                </div>
+                <div className="mt-1 h-3 w-full overflow-hidden rounded-full bg-white/10">
+                  <motion.div className="h-full rounded-full bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500"
+                    initial={{ width: 0 }} animate={{ width: `${Math.max(comparison.jaccard * 100, 2)}%` }}
+                    transition={{ duration: 0.8 }} />
+                </div>
+              </div>
+              {/* Stats row */}
+              <div className="mb-4 grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-sm font-bold text-[#FF6F00]">{comparison.aTotal}</p>
+                  <p className="text-[9px] capitalize text-white/30">{comparison.a}</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-sm font-bold text-emerald-400">{comparison.shared.length}</p>
+                  <p className="text-[9px] text-white/30">Shared</p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-2">
+                  <p className="text-sm font-bold text-emerald-400">{comparison.bTotal}</p>
+                  <p className="text-[9px] capitalize text-white/30">{comparison.b}</p>
+                </div>
+              </div>
+              {/* Shared molecules */}
+              {comparison.shared.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#FF6F00]">
+                    Molecular Bridges ({comparison.shared.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {comparison.shared.map((m) => (
+                      <span key={m} className="rounded-full bg-[#FF6F00]/15 px-2.5 py-1 font-mono text-[10px] text-[#FF6F00]">{m}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-xs text-white/30">No shared molecules — a pure contrast pairing!</p>
+              )}
+            </motion.div>
+          )}
+
+          {/* Empty state */}
+          {!active && !loading && !error && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
+              className="rounded-xl border border-white/10 bg-white/[0.03] py-16 text-center">
+              <div className="relative mx-auto w-fit">
+                <TestTubes className="mx-auto h-14 w-14 text-white/10" />
+                <motion.div className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-[#FF6F00]/30"
+                  animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 2, repeat: Infinity }} />
+              </div>
+              <h3 className="mt-4 text-sm font-semibold text-white/60">Ready for Analysis</h3>
+              <p className="mx-auto mt-2 max-w-sm text-xs text-white/30">
+                Search an ingredient or click any item from the palette to see its complete molecular profile from FlavorDB.
+              </p>
+              <p className="mt-3 text-[10px] text-white/20">
+                Analyze 2+ ingredients to unlock molecular comparison
+              </p>
+            </motion.div>
+          )}
+        </div>
+      </div>
+
+      {/* Molecule Ribbon */}
+      {active && moleculesColored.length > 0 && !loading && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+            <Atom className="h-4 w-4 text-[#E91E63]" />
+            Detected Molecules ({moleculesColored.length})
+            <span className="text-[10px] font-normal text-white/30">— {active.name}</span>
+          </h3>
+          <div className="flex gap-2 overflow-x-auto pb-3">
+            {moleculesColored.map((mol) => (
+              <motion.div key={mol.common_name} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 transition-colors hover:bg-white/10">
+                <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: mol.color }} />
+                <span className="whitespace-nowrap font-mono text-xs text-white/80">{mol.common_name}</span>
+                <span className="text-[9px] capitalize text-white/30">{mol.category}</span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
