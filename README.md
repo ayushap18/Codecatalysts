@@ -34,22 +34,22 @@ With **118,000+ recipes across 74 countries** in RecipeDB and **25,595 flavor mo
 ### 1. Home -- Recipe Search Hub
 Search 118K+ recipes by title, view Recipe of the Day, track search history with smart caching.
 
-<img src="photos/Screenshot 2026-02-15 at 8.14.27 AM.png" alt="Home" width="100%"/>
+<img src="photos/home.png" alt="Home" width="100%"/>
 
 ### 2. Flavor Twins -- Cross-Cultural Discovery
 Find recipes from **different countries** that share the same molecular fingerprint. *"This Thai Pad Thai and an Italian Burger share 37% molecular identity."* Suggestion chips for quick access.
 
-<img src="photos/Screenshot 2026-02-15 at 8.14.52 AM.png" alt="Flavor Twins" width="100%"/>
+<img src="photos/twins.png" alt="Flavor Twins" width="100%"/>
 
 ### 3. Philosophy Spectrum -- Pairing vs Contrast
 Classify any recipe on the **Pairing vs Contrast** spectrum (Ahn et al., 2011). Western cuisines pair ingredients sharing molecules; East Asian cuisines contrast them. Full radial FlavorPrint visualization.
 
-<img src="photos/Screenshot 2026-02-15 at 8.15.04 AM.png" alt="Philosophy Spectrum" width="100%"/>
+<img src="photos/spectrum.png" alt="Philosophy Spectrum" width="100%"/>
 
 ### 4. Cuisine DNA -- Multi-Cuisine Comparison
 Compare molecular profiles of up to **3 cuisines** side-by-side. 5 preset combos (e.g. Indian vs Japanese). Visualize flavor category breakdown with bar charts.
 
-<img src="photos/Screenshot 2026-02-15 at 8.15.43 AM.png" alt="Cuisine DNA" width="100%"/>
+<img src="photos/cuisine-dna.png" alt="Cuisine DNA" width="100%"/>
 
 ### 5. Molecular Kitchen Lab
 A black-themed experimental workspace with **6 sub-modules**:
@@ -63,13 +63,13 @@ A black-themed experimental workspace with **6 sub-modules**:
 | **Live Molecular Analysis** | Search ANY ingredient, get its full molecular profile with comparison mode |
 | **API Explorer** | Browse & test all 62 FlavorDB + RecipeDB endpoints live |
 
-<img src="photos/Screenshot 2026-02-15 at 8.16.08 AM.png" alt="Molecular Kitchen" width="100%"/>
+<img src="photos/molecular-kitchen.png" alt="Molecular Kitchen" width="100%"/>
 
-<img src="photos/Screenshot 2026-02-15 at 8.16.26 AM.png" alt="Compatibility Heatmap" width="100%"/>
+<img src="photos/heatmap.png" alt="Compatibility Heatmap" width="100%"/>
 
-<img src="photos/Screenshot 2026-02-15 at 8.16.53 AM.png" alt="Fusion Lab" width="100%"/>
+<img src="photos/fusion-lab.png" alt="Fusion Lab" width="100%"/>
 
-<img src="photos/Screenshot 2026-02-15 at 8.16.41 AM.png" alt="API Explorer" width="100%"/>
+<img src="photos/api-explorer.png" alt="API Explorer" width="100%"/>
 
 ---
 
